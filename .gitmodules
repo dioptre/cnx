@@ -1,0 +1,9 @@
+[submodule "src/main/namecoin"]
+	path = src/main/namecoin
+	url = https://github.com/namecoin/namecoin.git
+[submodule "src/main/libcoin"]
+	path = src/main/libcoin
+	url = https://github.com/namecoin/libcoin.git
+[submodule "src/main/vanitygen"]
+	path= src/main/vanitygen
+	url = https://github.com/samr7/vanitygen.git
