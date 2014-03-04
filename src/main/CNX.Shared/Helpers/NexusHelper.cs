@@ -695,7 +695,7 @@ namespace CNX.Shared.Helpers
             return bs;
         }
 
-        private static string GetID(string txHex)
+        private static string GetTransactionID(string txHex)
         {
             return CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(txHex))).Reverse().ToArray());
         }
@@ -751,7 +751,7 @@ namespace CNX.Shared.Helpers
             return addr;            
         }
 
-        static string CreateVersionMessage(IPAddress destinationIP=null, int? destinationPort=default(int?), IPAddress originIP=null, int? originPort=default(int?))
+        private static string CreateVersionMessage(IPAddress destinationIP=null, int? destinationPort=default(int?), IPAddress originIP=null, int? originPort=default(int?))
         {
             if (originIP == null)
                 originIP = ConstantsHelper.PROTOCOL_VERSION_IP_DEFAULT;
@@ -988,7 +988,7 @@ namespace CNX.Shared.Helpers
                             checkHexExists(hex);
                             socket.Send(CryptographyHelper.GetHexBytes(CreateBroadcast(MessageType.NotifyTransaction, hex)));
                             //return CryptographyHelper.ByteArrayToString(DownloadSocket(socket)); //socket.Receive(bytes); //nothing received
-                            return GetID(hex); //TODO CHECK
+                            return GetTransactionID(hex); //TODO CHECK
                         case MessageType.GetBlocks:
                             if (hex == null || hex.Length == 0)
                                 hex = CreateBlockMessage();
@@ -1142,94 +1142,6 @@ namespace CNX.Shared.Helpers
         public static void Test()
         {
 
-            //var xxx = CryptographyHelper.ByteArrayToString(new byte[] { 0xff, 0x01, 0x00 });
-           // var gg = GetBlocks();
-
-    //       var derSig = "304502204c01fee2d724fb2e34930c658f585d49be2f6ac87c126506c0179e6977716093022100faad0afd3ae536cfe11f83afaba9a8914fc0e70d4c6d1495333b2fb3df6e8cae";
-    //        var hexSig = "4c01fee2d724fb2e34930c658f585d49be2f6ac87c126506c0179e6977716093faad0afd3ae536cfe11f83afaba9a8914fc0e70d4c6d1495333b2fb3df6e8cae";
-    //        //var d2hSig = derSigToHexSig(derSig);
-    //        var seq = (DerSequence)DerSequence.FromByteArray(CryptographyHelper.GetHexBytes(derSig));
-    //        var derIntR = ((DerInteger)seq.GetObjectAt(0)).Value.ToByteArrayUnsigned();
-    //        var derIntS = ((DerInteger)seq.GetObjectAt(1)).Value.ToByteArrayUnsigned();
-            
-
-    //    var txn =          ("0100000001a97830933769fe33c6155286ffae34db44c6b8783a2d8ca52ebee6414d399ec300000000" +
-    //                    "8a47" +
-    //                    "304402202c2e1a746c556546f2c959e92f2d0bd2678274823cc55e11628284e4a13016f80220797e716835f9dbcddb752cd0115a970a022ea6f2d8edafff6e087f928e41baac01" +
-    //                    "41" +
-    //                    "04392b964e911955ed50e4e368a9476bc3f9dcc134280e15636430eb91145dab739f0d68b82cf33003379d885a0b212ac95e9cddfd2d391807934d25995468bc55" +
-    //                    "ffffffff02015f0000000000001976a914c8e90996c7c6080ee06284600c684ed904d14c5c88ac204e000000000000" +
-    //                    "1976a914348514b329fda7bd33c7b2336cf7cd1fc9544c0588ac00000000");
-    //    var myTxn_forSig = ("0100000001a97830933769fe33c6155286ffae34db44c6b8783a2d8ca52ebee6414d399ec300000000" +
-    //                    "1976a914" + "167c74f7491fe552ce9e1912810a984355b8ee07" + "88ac" +
-    //                    "ffffffff02015f0000000000001976a914c8e90996c7c6080ee06284600c684ed904d14c5c88ac204e000000000000" +
-    //                    "1976a914348514b329fda7bd33c7b2336cf7cd1fc9544c0588ac00000000" +
-    //                    "01000000");
-    //    //Console.Write(myTxn_forSig);
-    //    var public_key =    "04392b964e911955ed50e4e368a9476bc3f9dcc134280e15636430eb91145dab739f0d68b82cf33003379d885a0b212ac95e9cddfd2d391807934d25995468bc55";
-    //    var hashToSign = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(myTxn_forSig))));
-    //    var hashToSign2 = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes("abbba12345"))));
-    //    //    //hashlib.sha256(hashlib.sha256(myTxn_forSig.decode('hex')).digest()).digest().encode('hex')
-    //    var sig_der =       "304402202c2e1a746c556546f2c959e92f2d0bd2678274823cc55e11628284e4a13016f80220797e716835f9dbcddb752cd0115a970a022ea6f2d8edafff6e087f928e41baac"; //01"[:-2]
-    //    var sig = "304402202c2e1a746c556546f2c959e92f2d0bd2678274823cc55e11628284e4a13016f80220797e716835f9dbcddb752cd0115a970a022ea6f2d8edafff6e087f928e41baac01";
-            
-    //    var res = CryptographyHelper.VerifyElliptical(CryptographyHelper.GetHexBytes(hashToSign), public_key, CryptographyHelper.GetHexBytes(sig));
-
-            
-    //        //            string npv, npu, nad;
-    //        //CryptographyHelper.GenerateKeys(out npu, out npv, out nad, CryptographyHelper.AddressFamily.NMC);
-    //        //var s = CryptographyHelper.SignWithElliptical(CryptographyHelper.GetHexBytes(hashToSign), npv);
-    //        //var res2 = CryptographyHelper.VerifyElliptical(CryptographyHelper.GetHexBytes(hashToSign), npu, s);
-    //        //var x = CryptographyHelper.ByteArrayToString(s);
-
-
-    ////            parsed = parseTxn(txn)      
-    ////signableTxn = getSignableTxn(parsed)
-    ////hashToSign = hashlib.sha256(hashlib.sha256(signableTxn.decode('hex')).digest()).digest().encode('hex')
-    ////assert(parsed[1][-2:] == '01') # hashtype
-    ////sig = keyUtils.derSigToHexSig(parsed[1][:-2])
-    ////public_key = parsed[2]
-    ////vk = ecdsa.VerifyingKey.from_string(public_key[2:].decode('hex'), curve=ecdsa.SECP256k1)
-    ////assert(vk.verify_digest(sig.decode('hex'), hashToSign.decode('hex')))
-
-    //        var temp = "asd";
-    //    //sig = derSigToHexSig(sig_der)
-
-    //    //vk = ecdsa.VerifyingKey.from_string(public_key[2:].decode('hex'), curve=ecdsa.SECP256k1)
-    //    //self.assertEquals(vk.verify_digest(sig.decode('hex'), hashToSign.decode('hex')), True)
-
-    //        //string npv, npu, nad;
-    //        //CryptographyHelper.GenerateKeys(out npu, out npv, out nad, CryptographyHelper.AddressFamily.NMC);
-    //        //var temp = ExecuteMethod(NexusCall.CreateAddress, new { Key = npv.ConvertPrivateHexToWIF(), Label = "Item6", Rescan = false });
-    //        //var temp = ExecuteMethod(NexusCall.CreateAddress, npv);
-
-    //        //var addresses =  new SortedDictionary<string, string>();
-    //        //string npv, npu, nad;
-    //        //for (int i = 0; i < 50; i++)
-    //        //{
-    //        //    CryptographyHelper.GenerateKeys(out npu, out npv, out nad, CryptographyHelper.AddressFamily.NMC);
-    //        //    addresses.Add(nad, npv);
-    //        //}
-    //        //addresses.Keys.ToArray();
-    //        //addresses.Values.ToArray();
-    //        //var a = addresses.ToArray();
-
-    //        //var pu = CryptographyHelper.ConvertPrivateToPublic(CryptographyHelper.ConvertPrivateWIFToHex(pv.result.Value));
-    //        var hash = CryptographyHelper.ConvertPublicHexToHash("04ebf207b349e1fc75f6c14c6616afc2d4bcdfa672232234c23c6f34eeba9d10085724cedc2e7d17c427a09cf6068ebfc1bb9da03fd70a27765d2af29adfd6673a");
-    //        //var address = CryptographyHelper.ConvertPublicHashToAddress(CryptographyHelper.ConvertPublicHexToHash("04ebf207b349e1fc75f6c14c6616afc2d4bcdfa672232234c23c6f34eeba9d10085724cedc2e7d17c427a09cf6068ebfc1bb9da03fd70a27765d2af29adfd6673a"), CryptographyHelper.AddressFamily.NMC);
-    //        var address = CryptographyHelper.ConvertPublicHashToAddress(CryptographyHelper.ConvertPublicHexToHash("04e393db95595e738cde0e1cf650544c13184fca60e6e7e2768244bfd668e5d6d3c51cc0b98d76cecdddc6989c6f3dd34da3581352edac76edf6c0809fc9a05ec7"), CryptographyHelper.AddressFamily.NMC);
-    //        //var news1 = CryptographyHelper.ConvertPublicHashToAddress(CryptographyHelper.ConvertPublicHexToHash("04ba207043c1575208f08ea6ac27ed2aedd4f84e70b874db129acb08e6109a3bbb7c479ae22565973ebf0ac0391514511a22cb9345bdb772be20cfbd38be578b0c"), CryptographyHelper.AddressFamily.NMC);
-    //        //var news2 = CryptographyHelper.ConvertPublicHashToAddress(CryptographyHelper.ConvertPublicHexToHash("04fc4366270096c7e40adb8c3fcfbff12335f3079e5e7905bce6b1539614ae057ee1e61a25abdae4a7a2368505db3541cd81636af3f7c7afe8591ebc85b2a1acdd"), CryptographyHelper.AddressFamily.NMC);
-    //        //CreateNameTransaction();
-    //        var add = CryptographyHelper.ConvertPublicHashToAddress("c4e6384021b8b54b88cb68104b8b2229503b8f83", CryptographyHelper.AddressFamily.NMC);
-    //        var add2 = CryptographyHelper.ConvertPublicHashToAddress("24e1a9eb65eb2088432dae8e7abfda687771def4", CryptographyHelper.AddressFamily.NMC); //MywNrwnS9QtNkPBLX9sXKaR9iXv9dFPrG5 name_firstupdate
-    //        //var r = CryptographyHelper.GetHexBytes("80c5da499c7e9fd100");
-    //        //var k = CryptographyHelper.GetHexBytes("642f74657374313031");
-    //        //byte[] rk = new byte[r.Length + k.Length];
-    //        //System.Buffer.BlockCopy(r, 0, rk, 0, r.Length);
-    //        //System.Buffer.BlockCopy(k, 0, rk, r.Length, k.Length);
-    //        //var o = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash160(rk));
-
             //var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
             //var random = new Random();
             //var result = new string(
@@ -1243,7 +1155,6 @@ namespace CNX.Shared.Helpers
             //    Key = "d/gabboncha3",
             //    Rand = "randlebomp"
             //});
-
 
             //var tempf = ExecuteMethod(NexusCall.FirstUpdate, new
             //{
@@ -1260,8 +1171,6 @@ namespace CNX.Shared.Helpers
             //    Tx = "680a322c457caae0b9980b596d0b3b4f776808bad79c9bc0fdb41eb4078c0aaa",
             //});
 
-
-            //var xxx = Encoding.ASCII.GetString(CryptographyHelper.GetHexBytes("520b642f676162626f6e6368610a72616e646c65626f6d700b7b746573743a747275657d6d6d76a91424e1a9eb65eb2088432dae8e7abfda687771def488ac"));
 
             //var tempt = ExecuteMethod(NexusCall.Transfer, new
             //{
@@ -1283,40 +1192,12 @@ namespace CNX.Shared.Helpers
             //    LowFilter = ConstantsHelper.DEFAULT_FEE_NETWORK * 2
             //});
 
-            var tempg = ExecuteMethod(NexusCall.Describe, new
-            {
-                FromAddress = ConstantsHelper.TRUSTED_ADDRESSES[1],
-                Key = "d/gabboncha2",
-                Value = "{tested:tested55}",
-            });
-
-            //ad7c9c005547f1a87f2ba73270b42eb4d73d6885a742337697593d1f2db52896
-            //string tx = "01000000013a9921017672f56611d1975e4cb47920f88447dc3e4d5afe8de58e47f01029e2000000008c493046022100af5a42928a3c497b652cf4c663b06adea257dcfaa62e5396a68a1f2e97fb74ee0221008a9ac1e0e2c57934aa90cd82fdd454d86d762d50a539673ccb296658dff6c37c01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431ffffffff0300879303000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00879303000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac7f8d5b00000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00000000";
-            //var txid = GetTxID(tx);
-
-            //beaa0b41640b36cac4328861ac5b88da06e64adb6e1299ebadef76b58dc42f46
-            //var txTest = "010000000410739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77000000008A47304402202520a2eda128223e185a88abd6c041cd0ee2421b50343a1968e3adc69a074a6a022078ca945c64c749a5bf470c6ad4d19fb3d0a7262323df2364de63830dd2c1c33201410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77010000008A47304402202672e1762928a3114d888037ac0bf01ceebe3c6978bfcf6e79813f2051eb5b3b02203bd13236c43382795939dd9217e173dd7ba38b89e74d49e1232dd3c310c33e2701410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77020000008B483045022100e1ba45b48736351644f0c22ad22ffed4e68fe7fb67dd5eeae5ef1b8ba33ba4580220099a08de5414131e8eef289207c2ed010bee1614f55f96d6e91c3dd793d21b1e01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77030000008A473044022100bd999ac6fc9df349b39af9b16b09d6624b0e31fbb9d68bb5cf2a25544c5449a3021f4a15b59844d28269d10c46168e1ecaf500903db532725c710e08d48ae0a2fc01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF01C0CB1707000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00000000";
-                
-            //var oldPubKey = "51141bd6e9164a68802809e53ad10e66a043995de2396d76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac";
-            //var hh = "76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac".Length;
-            //var xx = string.Join("", oldPubKey.Reverse().Take(50).Reverse().ToArray());
-            //var testClean = (oldPubKey.IndexOf("76a914") != 0) oldPubKey.Substring(oldPubKey.IndexOf("76a914")); //51141bd6e9164a68802809e53ad10e66a043995de2396d76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac
-
-            //var c2 = "0100000001484d40d45b9ea0d652fca8258ab7caa42541eb52975857f96fb50cd732c8b481000000008a47304402202cb265bf10707bf49346c3515dd3d16fc454618c58ec0a0ff448a676c54ff71302206c6624d762a1fcef4618284ead8f08678ac05b13c84235f1654e6ad168233e8201410414e301b2328f17442c0b8310d787bf3d8a404cfbd0704f135b6ad4b2d3ee751310f981926e53a6e8c39bd7d3fefd576c543cce493cbac06388f2651d1aacbfcdffffffff0162640100000000001976a914c8e90996c7c6080ee06284600c684ed904d14c5c88ac00000000";
-            //var c3 = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(c2))), 0, 4);
-
-
-
-            //var inputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(inputCount) });
-            //var tx = "94eb66cf0bc2f833841ad7a2337d280a6c3966dd2c936dfd30645a4feed422e5";
-            //ProcessBroadcastResponse(CreateBroadcast(MessageType.Version, CreateVersionMessage()));
-            //var ret = ExecuteBroadcast(MessageType.GetBlocks);
-            
-            //var ret3 = ExecuteBroadcast(MessageType.RetrieveObject, CreateObjectMessage(tx, InventoryType.Transaction, true));
-            //var ret4 = ExecuteBroadcast(MessageType.NotifyObject, CreateObjectMessage(tx, InventoryType.Transaction, false));
-
-            GetPeers();
-            
+            //var tempg = ExecuteMethod(NexusCall.Describe, new
+            //{
+            //    FromAddress = ConstantsHelper.TRUSTED_ADDRESSES[1],
+            //    Key = "d/gabboncha2",
+            //    Value = "{tested:tested55}",
+            //});
 
         }
     }
