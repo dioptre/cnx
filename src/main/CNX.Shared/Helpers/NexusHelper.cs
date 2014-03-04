@@ -32,15 +32,15 @@ namespace CNX.Shared.Helpers
             Endorse, //E
             Resend, //F
             Split,
-            Recombine
+            Merge
         }
 
         public static dynamic ExecuteMethod(NexusCall? call, dynamic parameters)
         {
             var p = new List<object>();
             dynamic un;
-            string privateKey;
-            string publicKey;
+            string privateKey = CryptographyHelper.ConvertPrivateWIFToHex(ExecuteCall("dumpprivkey", parameters.FromAddress).result.Value);
+            string publicKey = CryptographyHelper.ConvertPrivateToPublic(privateKey); //public key
             string hexAddress;
             switch (call)
             {
@@ -52,7 +52,7 @@ namespace CNX.Shared.Helpers
                     p.Add(999999);
                     p.Add(new string[] { parameters.FromAddress });
                     un = ExecuteCall("listunspent", p.ToArray());
-                    hexAddress = CryptographyHelper.ConvertAddressToPublicHash(parameters.FromAddress).Replace(" ", "").ToLowerInvariant();
+                    hexAddress = CryptographyHelper.ConvertAddressToPublicHash(parameters.FromAddress).ToLowerInvariant();
                     if (un.result == null || un.result.Count == 0)
                     {
                         un = ExecuteCall("listunspent", null);
@@ -65,31 +65,25 @@ namespace CNX.Shared.Helpers
                             return null;
                         }
                     }
-                    privateKey = CryptographyHelper.ConvertPrivateWIFToHex(ExecuteCall("dumpprivkey", parameters.FromAddress).result.Value).Replace(" ", "");
-                    publicKey = CryptographyHelper.ConvertPrivateToPublic(privateKey).Replace(" ", ""); //public key
                     if (hexAddress == null)
                         hexAddress = publicKey;
                     hexAddress = hexAddress.ToLower();
                     foreach (var obj in un.result)
                     {
-                        if (obj.scriptPubKey.Value.ToLower().IndexOf(hexAddress) > -1 && obj.amount.Value >= (2 * ConstantsHelper.DEFAULT_FEE_NETWORK) ) //&& obj.confirmations.Value > 3)
+                        if (obj.scriptPubKey.Value.ToLower().IndexOf(hexAddress) > -1 && obj.amount.Value >= (2 * ConstantsHelper.DEFAULT_FEE_NETWORK)) //&& obj.confirmations.Value > 3)
                         {
                             var bs = CreateRawBuyTransaction(publicKey, privateKey, parameters.Key, parameters.Rand, obj.amount.Value, obj.txid.Value, obj.scriptPubKey.Value, (int)obj.vout.Value);
-
                             return ExecuteCall("sendrawtransaction", new object[] { bs });
                         }
                     }
                     return null;
                 case NexusCall.FirstUpdate:
-                    var buyTx = ExecuteCall("getrawtransaction", new object[]{parameters.Tx, 1});
+                    var buyTx = ExecuteCall("getrawtransaction", new object[] { parameters.Tx, 1 });
                     foreach (var obj in buyTx.result.vout)
                     {
                         if (obj.scriptPubKey.type.Value == "nonstandard" && obj.scriptPubKey.hex.Value.IndexOf("51") == 0 && obj.value.Value < (2 * ConstantsHelper.DEFAULT_FEE_NETWORK)) //&& obj.confirmations.Value > 3)
                         {
-                            privateKey = CryptographyHelper.ConvertPrivateWIFToHex(ExecuteCall("dumpprivkey", parameters.FromAddress).result.Value).Replace(" ", "");
-                            publicKey = CryptographyHelper.ConvertPrivateToPublic(privateKey).Replace(" ", ""); //public key
                             var bs = CreateFirstUpdateTransaction(publicKey, privateKey, parameters.Key, parameters.Rand, parameters.Value, obj.value.Value, parameters.Tx, obj.scriptPubKey.hex.Value, (int)obj.n.Value);
-
                             return ExecuteCall("sendrawtransaction", new object[] { bs });
                         }
                     }
@@ -114,14 +108,13 @@ namespace CNX.Shared.Helpers
                     p.Add(999999);
                     p.Add(new string[] { parameters.FromAddress });
                     un = ExecuteCall("listunspent", p.ToArray());
-                    hexAddress = CryptographyHelper.ConvertAddressToPublicHash(parameters.FromAddress).Replace(" ", "").ToLowerInvariant();
+                    hexAddress = CryptographyHelper.ConvertAddressToPublicHash(parameters.FromAddress).ToLowerInvariant();
                     if (un.result == null || un.result.Count == 0)
                     {
                         un = ExecuteCall("listunspent", null);
                         if (un.result != null && un.result.Count > 0)
                         {
-                            privateKey = ExecuteCall("dumpprivkey", parameters.FromAddress).result.Value;
-                            hexAddress = CryptographyHelper.ConvertPrivateToPublic(CryptographyHelper.ConvertPrivateWIFToHex(privateKey)).Replace(" ", ""); //public key
+                            hexAddress = publicKey; //public key
                         }
                     }
                     hexAddress = hexAddress.ToLower();
@@ -157,39 +150,14 @@ namespace CNX.Shared.Helpers
                     return null; //failed
                 case NexusCall.Split:
                     List<dynamic> splits = new List<dynamic>();
-                    Action<dynamic, string> split = (unspent,address) =>
+                    Action<dynamic, string> fnSplit = (unspent, address) =>
                     {
                         foreach (var obj in unspent)
                         {
-                            if (obj.scriptPubKey.Value.ToLower().IndexOf(address) > -1 && obj.amount.Value >= (parameters.Split*2)) // && obj.confirmations.Value > 3)
+                            if (obj.scriptPubKey.Value.ToLower().IndexOf(address) > -1 && obj.amount.Value >= (parameters.Split * 2)) // && obj.confirmations.Value > 3)
                             {
-                                //We can transfer out
-                                dynamic origin = new ExpandoObject[1];
-                                origin[0] = new ExpandoObject();
-                                origin[0].txid = obj.txid.Value;
-                                origin[0].vout = obj.vout.Value;
-                                //var origins = JsonConvert.SerializeObject(origin);
-                                dynamic destination = new ExpandoObject();
-                                double outstanding = obj.amount.Value - ConstantsHelper.DEFAULT_FEE_NETWORK;
-                                for (int i = 0; outstanding > 0; i++)
-                                {
-                                    ((IDictionary<string, object>)destination)[parameters.FromAddress] = parameters.Split;
-                                    outstanding -= parameters.Split;
-                                    if (outstanding < 0)
-                                        ((IDictionary<string, object>)destination)[parameters.FromAddress] = outstanding*-1;
-                                }
-
-                                var tx = ExecuteCall("createrawtransaction", new object[] { origin, destination });
-
-                                ////Sign it
-                                //var sig = ExecuteCall("signrawtransaction", new object[] { tx.result.Value });
-
-                                ////Send it
-                                //if (!sig.result.complete.Value)
-                                //    throw new Exception("Could not make payment, couldn't sign transaction");
-
-                                //splits.Add(ExecuteCall("sendrawtransaction", new object[] { sig.result.hex.Value }));
-                                ////var txInfo = ExecuteCall("getrawtransaction", new object[] { tx.result.Value });
+                                var bs = CreateSplitTransaction(publicKey, privateKey, parameters.Split, obj.amount.Value, obj.txid.Value, obj.scriptPubKey.Value, (int)obj.vout.Value);
+                                splits.Add(ExecuteCall("sendrawtransaction", new object[] { bs }));
                             }
                         }
                     };
@@ -197,21 +165,201 @@ namespace CNX.Shared.Helpers
                     p.Add(999999);
                     p.Add(new string[] { parameters.FromAddress });
                     un = ExecuteCall("listunspent", p.ToArray());
-                    hexAddress = CryptographyHelper.ConvertAddressToPublicHash(parameters.FromAddress).Replace(" ", "").ToLowerInvariant();
+                    hexAddress = CryptographyHelper.ConvertAddressToPublicHash(parameters.FromAddress).ToLowerInvariant();
                     if (un.result != null && un.result.Count > 0)
-                        split(un.result, hexAddress.ToLower());
+                        fnSplit(un.result, hexAddress);
                     un = ExecuteCall("listunspent", null);
                     if (un.result != null && un.result.Count > 0)
                     {
-                        privateKey = ExecuteCall("dumpprivkey", parameters.FromAddress).result.Value;
-                        hexAddress = CryptographyHelper.ConvertPrivateToPublic(CryptographyHelper.ConvertPrivateWIFToHex(privateKey)).Replace(" ", ""); //public key
-                        split(un.result, hexAddress.ToLower());
-                    }                    
-                    //var address = CryptographyHelper.ConvertPublicHashToAddress(hexAddress, CryptographyHelper.AddressFamily.NMC);                    
-                    return splits; 
+                        hexAddress = publicKey.ToLowerInvariant(); //public key                        
+                        fnSplit(un.result, hexAddress);
+                    }
+                    return splits;
+                case NexusCall.Merge:
+                    List<dynamic> toMerge = new List<dynamic>();
+                    Action<dynamic, string> fnMerge = (unspent, address) =>
+                    {
+                        foreach (var obj in unspent)
+                        {
+                            if (obj.scriptPubKey.Value.ToLower().IndexOf(address) > -1 && obj.amount.Value <= (parameters.HighFilter) && obj.amount.Value >= (parameters.LowFilter)) // && obj.confirmations.Value > 3)
+                            {
+                                toMerge.Add(new { Hash = obj.txid.Value, Index = (int)obj.vout.Value, PubKey = obj.scriptPubKey.Value, Amount = obj.amount.Value });
+
+                            }
+                        }
+                    };
+                    p.Add(1);
+                    p.Add(999999);
+                    p.Add(new string[] { parameters.FromAddress });
+                    un = ExecuteCall("listunspent", p.ToArray());
+                    hexAddress = CryptographyHelper.ConvertAddressToPublicHash(parameters.FromAddress).ToLowerInvariant();
+                    if (un.result != null && un.result.Count > 0)
+                        fnMerge(un.result, hexAddress);
+                    un = ExecuteCall("listunspent", null);
+                    if (un.result != null && un.result.Count > 0)
+                    {
+                        hexAddress = publicKey.ToLowerInvariant(); //public key                        
+                        fnMerge(un.result, hexAddress);
+                    }
+                    if (toMerge.Count < 2)
+                        return null; //Nothing to merge
+                    return ExecuteCall("sendrawtransaction", new object[] { CreateMergeTransaction(publicKey, privateKey, toMerge.ToArray()) });
                 default:
                     throw new Exception("Could not execute unknown method call.");
             }
+        }
+
+
+        private static string CreateMergeTransaction(string publicKey, string privateKey, dynamic[] oldTxs)
+        {
+
+            int version = 1;
+            uint sequence = 4294967295; //FFFFFFFF
+            
+            var lenc = new LittleEndianBitConverter();
+            var benc = new BigEndianBitConverter();
+            var v = CryptographyHelper.ByteArrayToString(lenc.GetBytes(version));
+            var sequenced = CryptographyHelper.ByteArrayToString(benc.GetBytes(sequence));
+            var publicHash = CryptographyHelper.ConvertPublicHexToHash(publicKey).ToLowerInvariant();
+            var address = CryptographyHelper.ConvertPublicHashToAddress(publicHash, CryptographyHelper.AddressFamily.NMC);
+
+            byte inputCount = (byte)oldTxs.Length;
+            var inputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(inputCount) });
+            double charge = -ConstantsHelper.DEFAULT_FEE_NETWORK;
+            foreach (var oldTx in oldTxs)
+                charge += oldTx.Amount;
+            if (charge < 0)
+                return null;
+            var cost = CryptographyHelper.ByteArrayToString(lenc.GetBytes((long)(charge * ConstantsHelper.CENT_MULTIPLIER)));
+            var costed = string.Format("76a914{0}88ac", publicHash);
+            var costedLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costed).Length) });
+
+            string[] oldHashReversed = new string[oldTxs.Length];
+            string[] index = new string[oldTxs.Length];
+            for (int i = 0; i < oldTxs.Length; i++)
+            {
+                oldHashReversed[i] = CryptographyHelper.ByteArrayToString(((byte[])CryptographyHelper.GetHexBytes(oldTxs[i].Hash)).Reverse().ToArray()); //Reverse required     
+                index[i] = CryptographyHelper.ByteArrayToString(lenc.GetBytes(oldTxs[i].Index));
+            }
+
+            string signed = string.Empty;
+            for (int i = 0; i < oldTxs.Length; i++)
+            {
+                string bsToSign = string.Empty;
+                bsToSign += v;
+                bsToSign += inputs;
+                for (int j = 0; j < oldTxs.Length; j++)
+                {
+
+                    bsToSign += oldHashReversed[j] + index[j];
+                    if (i == j)
+                    {
+                        var oldPubKeyLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(oldTxs[i].PubKey).Length) });
+                        bsToSign += oldPubKeyLength + oldTxs[i].PubKey;
+                    }
+                    else
+                        bsToSign += "00"; //or 0
+                    bsToSign += sequenced;
+                }
+                bsToSign += "01"; //Output Count
+                bsToSign += cost;
+                bsToSign += costedLength;
+                bsToSign += costed;
+                bsToSign += "00000000"; //Lock Time
+                bsToSign += "01000000"; //SIGHASH_ALL  
+                var s256 = CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(bsToSign)));
+                var sig = CryptographyHelper.SignWithElliptical(s256, privateKey);
+                var bPubKey = publicKey.ToLowerInvariant();
+                var bSig = CryptographyHelper.ByteArrayToString(sig).ToLowerInvariant();
+                var scriptSig = string.Format("{0}{1}{2}{3}{4}",
+                    CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte((bSig.Length / 2) + 1) }),
+                    bSig,
+                    "01", //HashType=0x01
+                    CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bPubKey.Length / 2) }),
+                    bPubKey);
+                var sigLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(scriptSig).Length) });                
+                signed += oldHashReversed[i] + index[i] + sigLength + scriptSig + sequenced;
+
+            }                     
+           
+            string bs = string.Empty;
+            bs += v;
+            bs += inputs;
+            bs += signed;
+            bs += "01"; //Output Count
+            bs += cost;
+            bs += costedLength;
+            bs += costed;
+            bs += "00000000"; //Lock Time   
+            return bs;
+        }
+
+        private static string CreateSplitTransaction(string publicKey, string privateKey, double split, double oldAmount, string oldHash, string oldPubKey, int oldIndex)
+        {
+            int version = 1;
+            byte inputCount = 1;
+            uint sequence = 4294967295; //FFFFFFFF
+            string bs = string.Empty;
+            var lenc = new LittleEndianBitConverter();
+            var benc = new BigEndianBitConverter();
+            var v = CryptographyHelper.ByteArrayToString(lenc.GetBytes(version));
+            var inputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(inputCount) });
+            var index = CryptographyHelper.ByteArrayToString(lenc.GetBytes(oldIndex));
+            var oldPubKeyLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(oldPubKey).Length) });
+            var sequenced = CryptographyHelper.ByteArrayToString(benc.GetBytes(sequence));
+            var oldHashReversed = CryptographyHelper.ByteArrayToString(CryptographyHelper.GetHexBytes(oldHash).Reverse().ToArray()); //Reverse required                            
+            var publicHash = CryptographyHelper.ConvertPublicHexToHash(publicKey).ToLowerInvariant();
+            var address = CryptographyHelper.ConvertPublicHashToAddress(publicHash, CryptographyHelper.AddressFamily.NMC);
+            var outputCount = 0;
+            double outstanding = oldAmount - ConstantsHelper.DEFAULT_FEE_NETWORK;
+            string costs = string.Empty;
+            for (; outstanding > 0; outputCount++)
+            {
+                outstanding -= split;
+                double charge = (outstanding < 0) ? outstanding + split : split;
+                var cost = CryptographyHelper.ByteArrayToString(lenc.GetBytes((long)(charge * ConstantsHelper.CENT_MULTIPLIER)));
+                var costed = string.Format("76a914{0}88ac", publicHash);
+                var costedLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costed).Length) });
+                costs += cost + costedLength + costed;
+
+            }
+            if (costs == string.Empty)
+                return null;
+            var outputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(outputCount) });
+            bs += v;
+            bs += inputs;
+            bs += oldHashReversed;
+            bs += index;
+            bs += oldPubKeyLength;
+            bs += oldPubKey;
+            bs += sequenced;
+            bs += outputs;
+            bs += costs;
+            bs += "00000000"; //Lock Time
+            bs += "01000000"; //SIGHASH_ALL
+            var s256 = CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(bs)));
+            var sig = CryptographyHelper.SignWithElliptical(s256, privateKey);
+            var bPubKey = publicKey.ToLowerInvariant();
+            var bSig = CryptographyHelper.ByteArrayToString(sig).ToLowerInvariant();
+            var scriptSig = string.Format("{0}{1}{2}{3}{4}",
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte((bSig.Length / 2) + 1) }),
+                bSig,
+                "01", //HashType=0x01
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bPubKey.Length / 2) }),
+                bPubKey);
+            var sigLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(scriptSig).Length) });
+            bs = string.Empty;
+            bs += v;
+            bs += inputs;
+            bs += oldHashReversed;
+            bs += index;
+            bs += sigLength;
+            bs += scriptSig;
+            bs += sequenced;
+            bs += outputs;
+            bs += costs;
+            bs += "00000000"; //Lock Time   
+            return bs;
         }
 
         private static string CreateFirstUpdateTransaction(string publicKey, string privateKey, string name, string rand, string val, double balance, string oldHash, string oldPubKey, int oldIndex)
@@ -219,38 +367,38 @@ namespace CNX.Shared.Helpers
             int version = 28928;
             byte inputCount = 1;
             uint sequence = 4294967295; //FFFFFFFF
-            if (balance > ConstantsHelper.DEFAULT_FEE_NETWORK*2)
+            if (balance > ConstantsHelper.DEFAULT_FEE_NETWORK * 2)
                 throw new Exception("Error, risking too much liability for transaction.");
             long charge = (long)(ConstantsHelper.DEFAULT_FEE_NETWORK * ConstantsHelper.CENT_MULTIPLIER);
             string bs = string.Empty;
             var lenc = new LittleEndianBitConverter();
             var benc = new BigEndianBitConverter();
-            var v = BitConverter.ToString(lenc.GetBytes(version)).Replace("-", "");
-            var inputs = BitConverter.ToString(new byte[] { Convert.ToByte(inputCount) }).Replace("-", "");
-            var index = BitConverter.ToString(lenc.GetBytes(oldIndex)).Replace("-", "");
+            var v = CryptographyHelper.ByteArrayToString(lenc.GetBytes(version));
+            var inputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(inputCount) });
+            var index = CryptographyHelper.ByteArrayToString(lenc.GetBytes(oldIndex));
             var cleanedPubKey = string.Join("", oldPubKey.Reverse().Take(50).Reverse().ToArray());
-            var cleanedPubKeyLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(cleanedPubKey).Length) }).Replace("-", "");
-            var oldPubKeyLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(oldPubKey).Length) }).Replace("-", "");
-            var sequenced = BitConverter.ToString(benc.GetBytes(sequence)).Replace("-", "");
-            var cost = BitConverter.ToString(lenc.GetBytes(charge)).Replace("-", "");
-            var oldHashReversed = BitConverter.ToString(CryptographyHelper.GetHexBytes(oldHash).Reverse().ToArray()).Replace("-", ""); //Reverse required                            
-            var publicHash = CryptographyHelper.ConvertPublicHexToHash(publicKey).Replace(" ", "").ToLowerInvariant();
+            var cleanedPubKeyLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(cleanedPubKey).Length) });
+            var oldPubKeyLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(oldPubKey).Length) });
+            var sequenced = CryptographyHelper.ByteArrayToString(benc.GetBytes(sequence));
+            var cost = CryptographyHelper.ByteArrayToString(lenc.GetBytes(charge));
+            var oldHashReversed = CryptographyHelper.ByteArrayToString(CryptographyHelper.GetHexBytes(oldHash).Reverse().ToArray()); //Reverse required                            
+            var publicHash = CryptographyHelper.ConvertPublicHexToHash(publicKey).ToLowerInvariant();
             var address = CryptographyHelper.ConvertPublicHashToAddress(publicHash, CryptographyHelper.AddressFamily.NMC);
-            var bName = BitConverter.ToString(Encoding.ASCII.GetBytes(name)).Replace("-","");
-            var bRand = BitConverter.ToString(Encoding.ASCII.GetBytes(rand)).Replace("-", "");
-            var bVal = BitConverter.ToString(Encoding.ASCII.GetBytes(val)).Replace("-", "");
+            var bName = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes(name));
+            var bRand = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes(rand));
+            var bVal = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes(val));
             var costedPrefix = string.Format("52{0}{1}{2}{3}{4}{5}6d6d",
-                BitConverter.ToString(new byte[] { Convert.ToByte(bName.Length / 2) }).Replace("-", ""),
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bName.Length / 2) }),
                 bName,
-                BitConverter.ToString(new byte[] { Convert.ToByte(bRand.Length / 2) }).Replace("-", ""),
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bRand.Length / 2) }),
                 bRand,
-                BitConverter.ToString(new byte[] { Convert.ToByte(bVal.Length / 2) }).Replace("-", ""),
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bVal.Length / 2) }),
                 bVal
                 ); //New:1;First:2;Update:3;NOP:4, hash, OP_2DROP OP_DUP OP_HASH160, destination, OP_EQUALVERIFY OP_CHECKS
-            var costed = string.Format("76a914{0}88ac", publicHash); 
-            var costedLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costed).Length) }).Replace("-", "");
+            var costed = string.Format("76a914{0}88ac", publicHash);
+            var costedLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costed).Length) });
             var costedWithPrefix = costedPrefix + costed;
-            var costedWithPrefixLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costedPrefix + costed).Length) }).Replace("-", "");
+            var costedWithPrefixLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costedPrefix + costed).Length) });
             bs += v;
             bs += inputs;
             bs += oldHashReversed;
@@ -267,14 +415,14 @@ namespace CNX.Shared.Helpers
             var s256 = CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(bs)));
             var sig = CryptographyHelper.SignWithElliptical(s256, privateKey);
             var bPubKey = publicKey.ToLowerInvariant();
-            var bSig = BitConverter.ToString(sig).Replace("-", "").ToLowerInvariant();
+            var bSig = CryptographyHelper.ByteArrayToString(sig).ToLowerInvariant();
             var scriptSig = string.Format("{0}{1}{2}{3}{4}",
-                BitConverter.ToString(new byte[] { Convert.ToByte((bSig.Length / 2) + 1) }).Replace("-", ""),
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte((bSig.Length / 2) + 1) }),
                 bSig,
                 "01", //HashType=0x01
-                BitConverter.ToString(new byte[] { Convert.ToByte(bPubKey.Length / 2) }).Replace("-", ""),
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bPubKey.Length / 2) }),
                 bPubKey);
-            var sigLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(scriptSig).Length) }).Replace("-", "");
+            var sigLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(scriptSig).Length) });
             bs = string.Empty;
             bs += v;
             bs += inputs;
@@ -294,8 +442,8 @@ namespace CNX.Shared.Helpers
         private static string CreateRawBuyTransaction(string publicKey, string privateKey, string name, string rand, double balance, string oldHash, string oldPubKey, int oldIndex)
         {
             //var address = CryptographyHelper.ConvertPublicHashToAddress(hexAddress, CryptographyHelper.AddressFamily.NMC);
-            int version =  28928;
-            byte inputCount = 1;            
+            int version = 28928;
+            byte inputCount = 1;
             //string inputScriptSig = "48304502200902fdd58fd42fba0c6735035969c5579a5adc0f7d5162186b05d66188dd358f0221008e4ce1f385ea5c3d8792f363ad237e242ab5e01b457de1158f38ac451d192dbb014104c6eacb602a3e0786fecbbfe90058c3e23baffd94fb3683677e823eda42b4b0de3e957b1f7f74edf0666bb3a3de46c76647a2af36b090cbd1f63812b04345baa6";
             uint sequence = 4294967295; //FFFFFFFF
             long amount = (long)(balance * ConstantsHelper.CENT_MULTIPLIER);
@@ -303,30 +451,30 @@ namespace CNX.Shared.Helpers
             string bs = string.Empty;
             var lenc = new LittleEndianBitConverter();
             var benc = new BigEndianBitConverter();
-            var v = BitConverter.ToString(lenc.GetBytes(version)).Replace("-", "");
-            var inputs = BitConverter.ToString(new byte[] { Convert.ToByte(inputCount) }).Replace("-", "");
-            var index = BitConverter.ToString(lenc.GetBytes(oldIndex)).Replace("-", "");
+            var v = CryptographyHelper.ByteArrayToString(lenc.GetBytes(version));
+            var inputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(inputCount) });
+            var index = CryptographyHelper.ByteArrayToString(lenc.GetBytes(oldIndex));
             var cleanedPubKey = string.Join("", oldPubKey.Reverse().Take(50).Reverse().ToArray()); //51141bd6e9164a68802809e53ad10e66a043995de2396d76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac
-            var cleanedPubKeyLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(cleanedPubKey).Length) }).Replace("-", "");
-            var oldPubKeyLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(oldPubKey).Length) }).Replace("-", "");
-            var sequenced = BitConverter.ToString(benc.GetBytes(sequence)).Replace("-", "");
-            var retain = BitConverter.ToString(lenc.GetBytes(amount - charge)).Replace("-", "");
-            var cost = BitConverter.ToString(lenc.GetBytes(charge)).Replace("-", "");
-            var oldHashReversed = BitConverter.ToString(CryptographyHelper.GetHexBytes(oldHash).Reverse().ToArray()).Replace("-", ""); //Reverse required                            
-            var hash = BitConverter.ToString(CryptographyHelper.Hash160(Encoding.ASCII.GetBytes(rand + name))).Replace("-", "");
-            var publicHash = CryptographyHelper.ConvertPublicHexToHash(publicKey).Replace(" ", "").ToLowerInvariant();
+            var cleanedPubKeyLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(cleanedPubKey).Length) });
+            var oldPubKeyLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(oldPubKey).Length) });
+            var sequenced = CryptographyHelper.ByteArrayToString(benc.GetBytes(sequence));
+            var retain = CryptographyHelper.ByteArrayToString(lenc.GetBytes(amount - charge));
+            var cost = CryptographyHelper.ByteArrayToString(lenc.GetBytes(charge));
+            var oldHashReversed = CryptographyHelper.ByteArrayToString(CryptographyHelper.GetHexBytes(oldHash).Reverse().ToArray()); //Reverse required                            
+            var hash = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash160(Encoding.ASCII.GetBytes(rand + name)));
+            var publicHash = CryptographyHelper.ConvertPublicHexToHash(publicKey).ToLowerInvariant();
             var address = CryptographyHelper.ConvertPublicHashToAddress(publicHash, CryptographyHelper.AddressFamily.NMC);
             //var retained = string.Format("41{1}ac", publicKey); //Default Namecoin Method
             var retained = string.Format("76a914{0}88ac", publicHash);
-            var retainedLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(retained).Length) }).Replace("-", "");
+            var retainedLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(retained).Length) });
             var costedPrefix = string.Format("51{0}{1}6d",
-               BitConverter.ToString(new byte[] { Convert.ToByte(hash.Length / 2) }).Replace("-", ""),
+               CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(hash.Length / 2) }),
                hash
                ); //New:1;First:2;Update:3;NOP:4, hash, OP_2DROP OP_DUP OP_HASH160, destination, OP_EQUALVERIFY OP_CHECKS
             var costed = string.Format("76a914{0}88ac", publicHash);
-            var costedLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costed).Length) }).Replace("-", "");
+            var costedLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costed).Length) });
             var costedWithPrefix = costedPrefix + costed;
-            var costedWithPrefixLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costedPrefix + costed).Length) }).Replace("-", "");
+            var costedWithPrefixLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costedPrefix + costed).Length) });
             bs += v;
             bs += inputs;
             bs += oldHashReversed;
@@ -352,14 +500,14 @@ namespace CNX.Shared.Helpers
             var s256 = CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(bs)));
             var sig = CryptographyHelper.SignWithElliptical(s256, privateKey);
             var bPubKey = publicKey.ToLowerInvariant();
-            var bSig = BitConverter.ToString(sig).Replace("-", "").ToLowerInvariant();
+            var bSig = CryptographyHelper.ByteArrayToString(sig).ToLowerInvariant();
             var scriptSig = string.Format("{0}{1}{2}{3}{4}",
-                BitConverter.ToString(new byte[] { Convert.ToByte((bSig.Length / 2) + 1) }).Replace("-", ""),
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte((bSig.Length / 2) + 1) }),
                 bSig,
                 "01", //HashType=0x01
-                BitConverter.ToString(new byte[] { Convert.ToByte(bPubKey.Length / 2) }).Replace("-", ""),
+                CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bPubKey.Length / 2) }),
                 bPubKey);
-            var sigLength = BitConverter.ToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(scriptSig).Length) }).Replace("-", "");
+            var sigLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(scriptSig).Length) });
             bs = string.Empty;
             bs += v;
             bs += inputs;
@@ -377,6 +525,11 @@ namespace CNX.Shared.Helpers
             bs += costedWithPrefix;
             bs += "00000000"; //Lock Time
             return bs;
+        }
+
+        private static string GetTxID(string txHex)
+        {
+            return CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(txHex))).Reverse().ToArray());
         }
 
         public static dynamic GetBlocks()
@@ -397,7 +550,7 @@ namespace CNX.Shared.Helpers
             joe.Add(new JProperty("jsonrpc", "1.0"));
             joe.Add(new JProperty("id", "1"));
             joe.Add(new JProperty("method", methodName));
-            
+
             // params is a collection values which the method requires.
             if (p == null)
             {
@@ -448,12 +601,14 @@ namespace CNX.Shared.Helpers
             {
                 throw new Exception(string.Format("Error processing: {0}. \r\nParameters:\r\n{1}", methodName, JsonConvert.SerializeObject(p)));
             }
-            
 
-        }      
-        
+
+        }
+
         public static void Test()
         {
+
+            //var xxx = CryptographyHelper.ByteArrayToString(new byte[] { 0xff, 0x01, 0x00 });
            // var gg = GetBlocks();
 
     //       var derSig = "304502204c01fee2d724fb2e34930c658f585d49be2f6ac87c126506c0179e6977716093022100faad0afd3ae536cfe11f83afaba9a8914fc0e70d4c6d1495333b2fb3df6e8cae";
@@ -478,8 +633,8 @@ namespace CNX.Shared.Helpers
     //                    "01000000");
     //    //Console.Write(myTxn_forSig);
     //    var public_key =    "04392b964e911955ed50e4e368a9476bc3f9dcc134280e15636430eb91145dab739f0d68b82cf33003379d885a0b212ac95e9cddfd2d391807934d25995468bc55";
-    //    var hashToSign = BitConverter.ToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(myTxn_forSig)))).Replace("-", "");
-    //    var hashToSign2 = BitConverter.ToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes("abbba12345")))).Replace("-", "");
+    //    var hashToSign = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(myTxn_forSig))));
+    //    var hashToSign2 = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes("abbba12345"))));
     //    //    //hashlib.sha256(hashlib.sha256(myTxn_forSig.decode('hex')).digest()).digest().encode('hex')
     //    var sig_der =       "304402202c2e1a746c556546f2c959e92f2d0bd2678274823cc55e11628284e4a13016f80220797e716835f9dbcddb752cd0115a970a022ea6f2d8edafff6e087f928e41baac"; //01"[:-2]
     //    var sig = "304402202c2e1a746c556546f2c959e92f2d0bd2678274823cc55e11628284e4a13016f80220797e716835f9dbcddb752cd0115a970a022ea6f2d8edafff6e087f928e41baac01";
@@ -491,7 +646,7 @@ namespace CNX.Shared.Helpers
     //        //CryptographyHelper.GenerateKeys(out npu, out npv, out nad, CryptographyHelper.AddressFamily.NMC);
     //        //var s = CryptographyHelper.SignWithElliptical(CryptographyHelper.GetHexBytes(hashToSign), npv);
     //        //var res2 = CryptographyHelper.VerifyElliptical(CryptographyHelper.GetHexBytes(hashToSign), npu, s);
-    //        //var x = BitConverter.ToString(s).Replace("-", "");
+    //        //var x = CryptographyHelper.ByteArrayToString(s);
 
 
     ////            parsed = parseTxn(txn)      
@@ -525,7 +680,7 @@ namespace CNX.Shared.Helpers
     //        //addresses.Values.ToArray();
     //        //var a = addresses.ToArray();
 
-    //        //var pu = CryptographyHelper.ConvertPrivateToPublic(CryptographyHelper.ConvertPrivateWIFToHex(pv.result.Value)).Replace(" ", "");
+    //        //var pu = CryptographyHelper.ConvertPrivateToPublic(CryptographyHelper.ConvertPrivateWIFToHex(pv.result.Value));
     //        var hash = CryptographyHelper.ConvertPublicHexToHash("04ebf207b349e1fc75f6c14c6616afc2d4bcdfa672232234c23c6f34eeba9d10085724cedc2e7d17c427a09cf6068ebfc1bb9da03fd70a27765d2af29adfd6673a");
     //        //var address = CryptographyHelper.ConvertPublicHashToAddress(CryptographyHelper.ConvertPublicHexToHash("04ebf207b349e1fc75f6c14c6616afc2d4bcdfa672232234c23c6f34eeba9d10085724cedc2e7d17c427a09cf6068ebfc1bb9da03fd70a27765d2af29adfd6673a"), CryptographyHelper.AddressFamily.NMC);
     //        var address = CryptographyHelper.ConvertPublicHashToAddress(CryptographyHelper.ConvertPublicHexToHash("04e393db95595e738cde0e1cf650544c13184fca60e6e7e2768244bfd668e5d6d3c51cc0b98d76cecdddc6989c6f3dd34da3581352edac76edf6c0809fc9a05ec7"), CryptographyHelper.AddressFamily.NMC);
@@ -539,7 +694,7 @@ namespace CNX.Shared.Helpers
     //        //byte[] rk = new byte[r.Length + k.Length];
     //        //System.Buffer.BlockCopy(r, 0, rk, 0, r.Length);
     //        //System.Buffer.BlockCopy(k, 0, rk, r.Length, k.Length);
-    //        //var o = BitConverter.ToString(CryptographyHelper.Hash160(rk));
+    //        //var o = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash160(rk));
 
             //var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
             //var random = new Random();
@@ -581,12 +736,26 @@ namespace CNX.Shared.Helpers
             //    Amount = 0.01
             //});
 
-            var tempt = ExecuteMethod(NexusCall.Split, new
+            //var tempt = ExecuteMethod(NexusCall.Split, new
+            //{
+            //    FromAddress = ConstantsHelper.TRUSTED_ADDRESSES[1],
+            //    Split = 0.30
+            //});
+
+            var tempg = ExecuteMethod(NexusCall.Merge, new
             {
                 FromAddress = ConstantsHelper.TRUSTED_ADDRESSES[1],
-                Split = 0.60
+                HighFilter = 0.8,
+                LowFilter = ConstantsHelper.DEFAULT_FEE_NETWORK * 2
             });
 
+
+            //ad7c9c005547f1a87f2ba73270b42eb4d73d6885a742337697593d1f2db52896
+            //string tx = "01000000013a9921017672f56611d1975e4cb47920f88447dc3e4d5afe8de58e47f01029e2000000008c493046022100af5a42928a3c497b652cf4c663b06adea257dcfaa62e5396a68a1f2e97fb74ee0221008a9ac1e0e2c57934aa90cd82fdd454d86d762d50a539673ccb296658dff6c37c01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431ffffffff0300879303000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00879303000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac7f8d5b00000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00000000";
+            //var txid = GetTxID(tx);
+
+                
+                
             //var oldPubKey = "51141bd6e9164a68802809e53ad10e66a043995de2396d76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac";
             //var hh = "76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac".Length;
             //var xx = string.Join("", oldPubKey.Reverse().Take(50).Reverse().ToArray());

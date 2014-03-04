@@ -563,7 +563,7 @@ namespace CNX.Shared.Helpers
             int usedcount = 0;
             for (int i = offset; usedcount < count; i++, usedcount++)
             {
-                rv += String.Format("{0:X2}", ba[i]) + " ";
+                rv += String.Format("{0:X2}", ba[i]);
             }
             return rv;
         }

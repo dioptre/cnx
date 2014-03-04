@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{359608D7-FAFE-40E9-90C6-BD6DF1C0FDCC}</ProjectGuid>
+    <ProjectGuid>{B303B44D-33F4-453C-BCF9-7A57BDD9B25B}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>CNX.Shared</RootNamespace>

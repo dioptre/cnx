@@ -43,12 +43,12 @@ namespace CNX.Shared.Helpers
 
         public static string Nonce
         {
-            get { return NewComb().ToString().Replace("-", ""); }
+            get { return NewComb().ToString(); }
         }
 
         public static string ToNonce(this Guid guid)
         {
-            return guid.ToString().Replace("-", "");
+            return guid.ToString();
         }
     }
 }
