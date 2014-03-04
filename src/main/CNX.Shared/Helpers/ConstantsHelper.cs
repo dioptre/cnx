@@ -21,6 +21,42 @@ namespace CNX.Shared.Helpers
         };
         public static double DEFAULT_FEE_NETWORK = 0.01;
         public static double CENT_MULTIPLIER = 100000000;
+        public static uint[] PEERS = new uint[] {
+            0x58cea445, 
+            0x2b562f4e, 
+            0x291f20b2
+        };
+        //Little Endian
+        public static byte[] MAGIC = new byte[] {
+                    0xfa,
+                    0xbf,
+                    0xb5,
+                    0xda
+        };
+        private static string magicString = null;
+        public static string MAGIC_STRING
+        {
+            get
+            {
+                if (magicString == null)
+                {
+                    magicString = CryptographyHelper.ByteArrayToString(MAGIC.Reverse().ToArray());
+                }
+                return magicString;
+            }
+        }
+        public static uint? magicInt = null;
+        public static uint MAGIC_INT
+        {
+            get
+            {
+                if (!magicInt.HasValue)
+                {
+                    magicInt = BitConverter.ToUInt32(MAGIC.Reverse().ToArray(),0);
+                }
+                return magicInt.Value;
+            }
+        }
     }
 
 }

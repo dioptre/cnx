@@ -632,6 +632,19 @@ namespace CNX.Shared.Helpers
             return hex;
         }
 
+        public static byte[] GetHexBytes(ulong[] source)
+        {
+            byte[] result = new byte[source.Length * sizeof(ulong)];
+            Buffer.BlockCopy(source, 0, result, 0, result.Length);
+            return result;
+        }
+
+        public static byte[] GetHexBytes(uint[] source)
+        {
+            byte[] result = new byte[source.Length * sizeof(uint)];
+            Buffer.BlockCopy(source, 0, result, 0, result.Length);
+            return result;
+        }
 
         public static byte[] GetHexBytes(string source)
         {
