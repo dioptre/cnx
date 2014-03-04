@@ -93,8 +93,53 @@ namespace CNX.Shared.Helpers
                     {
                         if (obj.scriptPubKey.Value.ToLower().IndexOf(hexAddress) > -1 && obj.amount.Value >= (2 * ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT)) //&& obj.confirmations.Value > 3)
                         {
-                            var bs = CreateRawBuyTransaction(publicKey, privateKey, parameters.Key, parameters.Rand, obj.amount.Value, obj.txid.Value, obj.scriptPubKey.Value, (int)obj.vout.Value);
+                            var bs = CreateBuyTransaction(publicKey, privateKey, parameters.Key, parameters.Rand, obj.amount.Value, obj.txid.Value, obj.scriptPubKey.Value, (int)obj.vout.Value);
                             return ExecuteCall("sendrawtransaction", new object[] { bs });
+                        }
+                    }
+                    return null;
+                case NexusCall.Describe:
+                    var oldName = ExecuteCall("name_show", new object[] { parameters.Key });
+                    var oldNameTx = ExecuteCall("getrawtransaction", new object[] { oldName.result.txid.Value, 1 });
+                    dynamic oldNameVout = null;
+                    foreach (var obj in oldNameTx.result.vout)
+                    {
+                        if (obj.scriptPubKey.type.Value == "nonstandard" && (obj.scriptPubKey.hex.Value.IndexOf("52") == 0 || obj.scriptPubKey.hex.Value.IndexOf("53") == 0) && obj.value.Value < (2 * ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT)) //&& obj.confirmations.Value > 3)
+                        {
+                            oldNameVout = obj;
+                            break;
+                        }
+                    }
+                    if (oldNameVout == null)
+                        return null;
+                    p.Add(1);
+                    p.Add(999999);
+                    p.Add(new string[] { parameters.FromAddress });
+                    un = ExecuteCall("listunspent", p.ToArray());
+                    hexAddress = CryptographyHelper.ConvertAddressToPublicHash(parameters.FromAddress).ToLowerInvariant();
+                    if (un.result == null || un.result.Count == 0)
+                    {
+                        un = ExecuteCall("listunspent", null);
+                        if (un.result != null && un.result.Count > 0)
+                        {
+                            hexAddress = null;
+                        }
+                        else
+                        {
+                            return null;
+                        }
+                    }
+                    if (hexAddress == null)
+                        hexAddress = publicKey;
+                    hexAddress = hexAddress.ToLower();
+                    foreach (var obj in un.result)
+                    {
+                        if (obj.scriptPubKey.Value.ToLower().IndexOf(hexAddress) > -1 && obj.amount.Value >= (2 * ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT)) //&& obj.confirmations.Value > 3)
+                        {
+                            var bs = CreateUpdateTransaction(publicKey, privateKey, parameters.Key, parameters.Value, obj.amount.Value, obj.txid.Value, obj.scriptPubKey.Value, (int)obj.vout.Value, oldName.result.txid.Value, oldNameVout.scriptPubKey.hex.Value, (int)oldNameVout.n.Value);
+                            return ExecuteCall("sendrawtransaction", new object[] { bs });
+                            //var bs = CreateBuyTransaction(publicKey, privateKey, parameters.Key, parameters.Rand, obj.amount.Value, obj.txid.Value, obj.scriptPubKey.Value, (int)obj.vout.Value);
+                            //return ExecuteCall("sendrawtransaction", new object[] { bs });
                         }
                     }
                     return null;
@@ -383,6 +428,108 @@ namespace CNX.Shared.Helpers
             return bs;
         }
 
+        private static string CreateUpdateTransaction(string publicKey, string privateKey, string name, string val, double balance, string oldHash, string oldPubKey, int oldIndex, string oldNameHash, string oldNamePubKey, int oldNameIndex)
+        {
+            int version = 28928;
+            uint sequence = 4294967295; //FFFFFFFF
+
+            var lenc = new LittleEndianBitConverter();
+            var benc = new BigEndianBitConverter();
+            var v = CryptographyHelper.ByteArrayToString(lenc.GetBytes(version));
+            var sequenced = CryptographyHelper.ByteArrayToString(benc.GetBytes(sequence));
+            var publicHash = CryptographyHelper.ConvertPublicHexToHash(publicKey).ToLowerInvariant();
+            var address = CryptographyHelper.ConvertPublicHashToAddress(publicHash, CryptographyHelper.AddressFamily.NMC);
+           
+            var inputs = "02";
+            long amount = (long)(balance * ConstantsHelper.CENT_MULTIPLIER);
+            long charge = (long)(ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT * ConstantsHelper.CENT_MULTIPLIER);
+            var retain = CryptographyHelper.ByteArrayToString(lenc.GetBytes(amount - charge));
+            var cost = CryptographyHelper.ByteArrayToString(lenc.GetBytes(charge));
+            var retained = string.Format("76a914{0}88ac", publicHash);
+            var retainedLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(retained).Length) });
+            var bName = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes(name));
+            var bVal = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes(val));
+            //COULD ADD ADDRESS HERE AT A LATER STAGE
+            var costedPrefix = string.Format("53{0}{1}{2}{3}6d75",
+                            CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bName.Length / 2) }),
+                            bName,
+                            CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bVal.Length / 2) }),
+                            bVal
+                            ); //New:1;First:2;Update:3;NOP:4, hash, OP_2DROP OP_DUP OP_HASH160, destination, OP_EQUALVERIFY OP_CHECKS
+            var costed = string.Format("76a914{0}88ac", publicHash);
+            var costedLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costed).Length) });
+            var costedWithPrefix = costedPrefix + costed;
+            var costedWithPrefixLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(costedPrefix + costed).Length) });
+
+            string[] oldHashReversed = new string[2];
+            string[] index = new string[2];
+            string[] pubKey = new string[2];
+            oldHashReversed[0] = CryptographyHelper.ByteArrayToString(((byte[])CryptographyHelper.GetHexBytes(oldHash)).Reverse().ToArray()); //Reverse required     
+            index[0] = CryptographyHelper.ByteArrayToString(lenc.GetBytes(oldIndex));
+            pubKey[0] = oldPubKey;
+            oldHashReversed[1] = CryptographyHelper.ByteArrayToString(((byte[])CryptographyHelper.GetHexBytes(oldNameHash)).Reverse().ToArray()); //Reverse required     
+            index[1] = CryptographyHelper.ByteArrayToString(lenc.GetBytes(oldNameIndex));
+            pubKey[1] = oldNamePubKey;
+
+            string signed = string.Empty;
+            for (int i = 0; i < 2; i++)
+            {
+                string bsToSign = string.Empty;
+                bsToSign += v;
+                bsToSign += inputs;
+                for (int j = 0; j < 2; j++)
+                {
+
+                    bsToSign += oldHashReversed[j] + index[j];
+                    if (i == j)
+                    {
+                        var oldPubKeyLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(pubKey[i]).Length) });
+                        bsToSign += oldPubKeyLength + pubKey[i];
+                    }
+                    else
+                        bsToSign += "00"; //or 0
+                    bsToSign += sequenced;
+                }
+                bsToSign += "02"; //Output Count
+                bsToSign += retain;
+                bsToSign += retainedLength;
+                bsToSign += retained;
+                bsToSign += cost;
+                bsToSign += costedWithPrefixLength;
+                bsToSign += costedWithPrefix;
+                bsToSign += "00000000"; //Lock Time
+                bsToSign += "01000000"; //SIGHASH_ALL  
+                var s256 = CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(bsToSign)));
+                var sig = CryptographyHelper.SignWithElliptical(s256, privateKey);
+                var bPubKey = publicKey.ToLowerInvariant();
+                var bSig = CryptographyHelper.ByteArrayToString(sig).ToLowerInvariant();
+                var scriptSig = string.Format("{0}{1}{2}{3}{4}",
+                    CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte((bSig.Length / 2) + 1) }),
+                    bSig,
+                    "01", //HashType=0x01
+                    CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(bPubKey.Length / 2) }),
+                    bPubKey);
+                var sigLength = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(CryptographyHelper.GetHexBytes(scriptSig).Length) });
+                signed += oldHashReversed[i] + index[i] + sigLength + scriptSig + sequenced;
+
+            }
+
+            string bs = string.Empty;
+            bs += v;
+            bs += inputs;
+            bs += signed;
+            bs += "02"; //Output Count
+            bs += retain;
+            bs += retainedLength;
+            bs += retained;
+            bs += cost;
+            bs += costedWithPrefixLength;
+            bs += costedWithPrefix;
+            bs += "00000000"; //Lock Time
+            return bs;
+
+        }
+
         private static string CreateFirstUpdateTransaction(string publicKey, string privateKey, string name, string rand, string val, double balance, string oldHash, string oldPubKey, int oldIndex)
         {
             int version = 28928;
@@ -460,7 +607,7 @@ namespace CNX.Shared.Helpers
             return bs;
         }
 
-        private static string CreateRawBuyTransaction(string publicKey, string privateKey, string name, string rand, double balance, string oldHash, string oldPubKey, int oldIndex)
+        private static string CreateBuyTransaction(string publicKey, string privateKey, string name, string rand, double balance, string oldHash, string oldPubKey, int oldIndex)
         {
             //var address = CryptographyHelper.ConvertPublicHashToAddress(hexAddress, CryptographyHelper.AddressFamily.NMC);
             int version = 28928;
@@ -558,14 +705,17 @@ namespace CNX.Shared.Helpers
             return ExecuteCall("getblockcount", null).result.Value;
         }
 
-        public static List<dynamic> GetPeers()
+        public static List<dynamic> GetPeers(bool skipServerLookup = true)
         {
             IPAddress destinationIP = null;
-            try
+            if (!skipServerLookup)
             {
-                destinationIP = Dns.GetHostAddresses(ConstantsHelper.PROTOCOL_HOST_DEFAULT).FirstOrDefault();
+                try
+                {
+                    destinationIP = Dns.GetHostAddresses(ConstantsHelper.PROTOCOL_HOST_DEFAULT).FirstOrDefault();
+                }
+                catch { }
             }
-            catch { }
             var ok = new List<dynamic>();
             var resp = new List<dynamic>();
             if (destinationIP != null)
@@ -1133,6 +1283,12 @@ namespace CNX.Shared.Helpers
             //    LowFilter = ConstantsHelper.DEFAULT_FEE_NETWORK * 2
             //});
 
+            var tempg = ExecuteMethod(NexusCall.Describe, new
+            {
+                FromAddress = ConstantsHelper.TRUSTED_ADDRESSES[1],
+                Key = "d/gabboncha2",
+                Value = "{tested:tested55}",
+            });
 
             //ad7c9c005547f1a87f2ba73270b42eb4d73d6885a742337697593d1f2db52896
             //string tx = "01000000013a9921017672f56611d1975e4cb47920f88447dc3e4d5afe8de58e47f01029e2000000008c493046022100af5a42928a3c497b652cf4c663b06adea257dcfaa62e5396a68a1f2e97fb74ee0221008a9ac1e0e2c57934aa90cd82fdd454d86d762d50a539673ccb296658dff6c37c01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431ffffffff0300879303000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00879303000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac7f8d5b00000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00000000";
