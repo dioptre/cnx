@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{B303B44D-33F4-453C-BCF9-7A57BDD9B25B}</ProjectGuid>
+    <ProjectGuid>{359608D7-FAFE-40E9-90C6-BD6DF1C0FDCC}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>CNX.Shared</RootNamespace>
@@ -78,7 +78,12 @@
     <Compile Include="Models\SessionRequest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\nkd\src\main\NKD.Extensions\NKD.Extensions.csproj">
+      <Project>{d52e5735-cd85-4a8d-a0c2-fb84ddbd222b}</Project>
+      <Name>NKD.Extensions</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

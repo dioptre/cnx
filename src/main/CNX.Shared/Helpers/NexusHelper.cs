@@ -15,6 +15,7 @@ using System.Collections;
 //using System.Runtime.Remoting.Metadata.W3cXsd2001; //SoapHexBinary.Parse
 using MiscUtil.Conversion;
 using Org.BouncyCastle.Asn1;
+using System.Net.Sockets;
 
 namespace CNX.Shared.Helpers
 {
@@ -762,6 +763,15 @@ namespace CNX.Shared.Helpers
             //var testClean = (oldPubKey.IndexOf("76a914") != 0) oldPubKey.Substring(oldPubKey.IndexOf("76a914")); //51141bd6e9164a68802809e53ad10e66a043995de2396d76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac
 
             var temp = ConstantsHelper.MAGIC_INT;
+
+            var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IPv4);
+            socket.Connect("localhost", 8336);
+ //             checksum = hashlib.sha256(hashlib.sha256(payload).digest()).digest()[0:4]
+ //16     return struct.pack('L12sL4s', magic, command, len(payload), checksum) + payload
+//            103     return makeMessage(magic, 'tx', payload)
+
+
+
         }
     }
 }
