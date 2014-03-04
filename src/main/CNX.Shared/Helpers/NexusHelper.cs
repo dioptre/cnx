@@ -16,6 +16,8 @@ using System.Collections;
 using MiscUtil.Conversion;
 using Org.BouncyCastle.Asn1;
 using System.Net.Sockets;
+using NKD.Helpers;
+using System.Security;
 
 namespace CNX.Shared.Helpers
 {
@@ -34,6 +36,24 @@ namespace CNX.Shared.Helpers
             Resend, //F
             Split,
             Merge
+        }
+
+        public enum MessageType
+        {
+            NotifyTransaction,
+            NotifyVersion,
+            GetBlocks,
+            GetAddresses,
+            GetObject,
+            NotifyObject,
+            NotifyAddresses
+        }
+
+        public enum InventoryType : int
+        {
+            Error = 0,
+            Transaction = 1,
+            Block = 2
         }
 
         public static dynamic ExecuteMethod(NexusCall? call, dynamic parameters)
@@ -71,7 +91,7 @@ namespace CNX.Shared.Helpers
                     hexAddress = hexAddress.ToLower();
                     foreach (var obj in un.result)
                     {
-                        if (obj.scriptPubKey.Value.ToLower().IndexOf(hexAddress) > -1 && obj.amount.Value >= (2 * ConstantsHelper.DEFAULT_FEE_NETWORK)) //&& obj.confirmations.Value > 3)
+                        if (obj.scriptPubKey.Value.ToLower().IndexOf(hexAddress) > -1 && obj.amount.Value >= (2 * ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT)) //&& obj.confirmations.Value > 3)
                         {
                             var bs = CreateRawBuyTransaction(publicKey, privateKey, parameters.Key, parameters.Rand, obj.amount.Value, obj.txid.Value, obj.scriptPubKey.Value, (int)obj.vout.Value);
                             return ExecuteCall("sendrawtransaction", new object[] { bs });
@@ -82,7 +102,7 @@ namespace CNX.Shared.Helpers
                     var buyTx = ExecuteCall("getrawtransaction", new object[] { parameters.Tx, 1 });
                     foreach (var obj in buyTx.result.vout)
                     {
-                        if (obj.scriptPubKey.type.Value == "nonstandard" && obj.scriptPubKey.hex.Value.IndexOf("51") == 0 && obj.value.Value < (2 * ConstantsHelper.DEFAULT_FEE_NETWORK)) //&& obj.confirmations.Value > 3)
+                        if (obj.scriptPubKey.type.Value == "nonstandard" && obj.scriptPubKey.hex.Value.IndexOf("51") == 0 && obj.value.Value < (2 * ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT)) //&& obj.confirmations.Value > 3)
                         {
                             var bs = CreateFirstUpdateTransaction(publicKey, privateKey, parameters.Key, parameters.Rand, parameters.Value, obj.value.Value, parameters.Tx, obj.scriptPubKey.hex.Value, (int)obj.n.Value);
                             return ExecuteCall("sendrawtransaction", new object[] { bs });
@@ -122,7 +142,7 @@ namespace CNX.Shared.Helpers
                     //var address = CryptographyHelper.ConvertPublicHashToAddress(hexAddress, CryptographyHelper.AddressFamily.NMC);
                     foreach (var obj in un.result)
                     {
-                        if (obj.scriptPubKey.Value.ToLower().IndexOf(hexAddress) > -1 && obj.amount.Value >= parameters.Amount + ConstantsHelper.DEFAULT_FEE_NETWORK) // && obj.confirmations.Value > 3)
+                        if (obj.scriptPubKey.Value.ToLower().IndexOf(hexAddress) > -1 && obj.amount.Value >= parameters.Amount + ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT) // && obj.confirmations.Value > 3)
                         {
                             //We can transfer out
                             dynamic origin = new ExpandoObject[1];
@@ -131,7 +151,7 @@ namespace CNX.Shared.Helpers
                             origin[0].vout = obj.vout.Value;
                             //var origins = JsonConvert.SerializeObject(origin);
                             dynamic destination = new ExpandoObject();
-                            ((IDictionary<string, object>)destination)[parameters.FromAddress] = obj.amount.Value - parameters.Amount - ConstantsHelper.DEFAULT_FEE_NETWORK;
+                            ((IDictionary<string, object>)destination)[parameters.FromAddress] = obj.amount.Value - parameters.Amount - ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT;
                             ((IDictionary<string, object>)destination)[parameters.ToAddress] = parameters.Amount;
                             //var destinations = JsonConvert.SerializeObject(destination);
                             var tx = ExecuteCall("createrawtransaction", new object[] { origin, destination });
@@ -225,8 +245,8 @@ namespace CNX.Shared.Helpers
             var address = CryptographyHelper.ConvertPublicHashToAddress(publicHash, CryptographyHelper.AddressFamily.NMC);
 
             byte inputCount = (byte)oldTxs.Length;
-            var inputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(inputCount) });
-            double charge = -ConstantsHelper.DEFAULT_FEE_NETWORK;
+            var inputs = VarInt((ulong)inputCount);
+            double charge = -ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT;
             foreach (var oldTx in oldTxs)
                 charge += oldTx.Amount;
             if (charge < 0)
@@ -312,7 +332,7 @@ namespace CNX.Shared.Helpers
             var publicHash = CryptographyHelper.ConvertPublicHexToHash(publicKey).ToLowerInvariant();
             var address = CryptographyHelper.ConvertPublicHashToAddress(publicHash, CryptographyHelper.AddressFamily.NMC);
             var outputCount = 0;
-            double outstanding = oldAmount - ConstantsHelper.DEFAULT_FEE_NETWORK;
+            double outstanding = oldAmount - ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT;
             string costs = string.Empty;
             for (; outstanding > 0; outputCount++)
             {
@@ -326,7 +346,7 @@ namespace CNX.Shared.Helpers
             }
             if (costs == string.Empty)
                 return null;
-            var outputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(outputCount) });
+            var outputs = VarInt((ulong)outputCount);
             bs += v;
             bs += inputs;
             bs += oldHashReversed;
@@ -368,9 +388,9 @@ namespace CNX.Shared.Helpers
             int version = 28928;
             byte inputCount = 1;
             uint sequence = 4294967295; //FFFFFFFF
-            if (balance > ConstantsHelper.DEFAULT_FEE_NETWORK * 2)
+            if (balance > ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT * 2)
                 throw new Exception("Error, risking too much liability for transaction.");
-            long charge = (long)(ConstantsHelper.DEFAULT_FEE_NETWORK * ConstantsHelper.CENT_MULTIPLIER);
+            long charge = (long)(ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT * ConstantsHelper.CENT_MULTIPLIER);
             string bs = string.Empty;
             var lenc = new LittleEndianBitConverter();
             var benc = new BigEndianBitConverter();
@@ -448,7 +468,7 @@ namespace CNX.Shared.Helpers
             //string inputScriptSig = "48304502200902fdd58fd42fba0c6735035969c5579a5adc0f7d5162186b05d66188dd358f0221008e4ce1f385ea5c3d8792f363ad237e242ab5e01b457de1158f38ac451d192dbb014104c6eacb602a3e0786fecbbfe90058c3e23baffd94fb3683677e823eda42b4b0de3e957b1f7f74edf0666bb3a3de46c76647a2af36b090cbd1f63812b04345baa6";
             uint sequence = 4294967295; //FFFFFFFF
             long amount = (long)(balance * ConstantsHelper.CENT_MULTIPLIER);
-            long charge = (long)(1.5 * ConstantsHelper.DEFAULT_FEE_NETWORK * ConstantsHelper.CENT_MULTIPLIER);
+            long charge = (long)(1.5 * ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT * ConstantsHelper.CENT_MULTIPLIER);
             string bs = string.Empty;
             var lenc = new LittleEndianBitConverter();
             var benc = new BigEndianBitConverter();
@@ -528,7 +548,7 @@ namespace CNX.Shared.Helpers
             return bs;
         }
 
-        private static string GetTxID(string txHex)
+        private static string GetID(string txHex)
         {
             return CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(txHex))).Reverse().ToArray());
         }
@@ -538,10 +558,373 @@ namespace CNX.Shared.Helpers
             return ExecuteCall("getblockcount", null).result.Value;
         }
 
+        public static List<dynamic> GetPeers()
+        {
+            IPAddress destinationIP = null;
+            try
+            {
+                destinationIP = Dns.GetHostAddresses(ConstantsHelper.PROTOCOL_HOST_DEFAULT).FirstOrDefault();
+            }
+            catch { }
+            var ok = new List<dynamic>();
+            var resp = new List<dynamic>();
+            if (destinationIP != null)
+                resp = ProcessBroadcastResponse(ExecuteBroadcast(MessageType.GetAddresses, null, destinationIP, ConstantsHelper.PROTOCOL_PORT_DEFAULT)).Addresses;
+            else
+                resp = ProcessBroadcastResponse(ConstantsHelper.ADDRESSES_PUBLIC).Addresses;
+            resp.AsParallel().ForAll((obj) =>
+            {
+                if (ok.Count < 10 && ExecuteBroadcast(MessageType.NotifyVersion, null, obj.IP, obj.Port) != null)
+                    ok.Add(obj);
+            });
+            return ok;
+        }
+
+        public static string GetPeerString(List<dynamic> addresses = default(List<dynamic>))
+        {
+            if (addresses == null)
+                addresses = GetPeers();
+            return CreateBroadcast(MessageType.NotifyAddresses, CreateAddressMessage(addresses));
+        }
+
+        private static string CreateAddressMessage(List<dynamic> addresses)
+        {
+            var lenc = new LittleEndianBitConverter();
+            var benc = new BigEndianBitConverter();
+            var addr = VarInt((ulong)addresses.Count);
+            foreach(var obj in addresses) {
+                addr += CryptographyHelper.ByteArrayToString(lenc.GetBytes(obj.Timestamp));
+                addr += CryptographyHelper.ByteArrayToString(lenc.GetBytes(obj.Service));
+                addr += string.Format("00000000000000000000FFFF{0}",CryptographyHelper.ByteArrayToString(lenc.GetBytes(((IPAddress)obj.IP).IPAsInt())));
+                addr += CryptographyHelper.ByteArrayToString(benc.GetBytes(obj.Port));
+            }
+            return addr;            
+        }
+
+        static string CreateVersionMessage(IPAddress destinationIP=null, int? destinationPort=default(int?), IPAddress originIP=null, int? originPort=default(int?))
+        {
+            if (originIP == null)
+                originIP = ConstantsHelper.PROTOCOL_VERSION_IP_DEFAULT;
+            if (originPort == default(int?))
+                originPort = ConstantsHelper.PROTOCOL_PORT_DEFAULT;
+            if (destinationIP == null)
+                destinationIP = ConstantsHelper.PROTOCOL_VERSION_IP_DEFAULT;
+            if (destinationPort == default(int?))
+                destinationPort = ConstantsHelper.PROTOCOL_PORT_DEFAULT; 
+
+
+            var lenc = new LittleEndianBitConverter();
+            var benc = new BigEndianBitConverter();
+            var version = CryptographyHelper.ByteArrayToString(lenc.GetBytes(ConstantsHelper.PROTOCOL_VERSION_DEFAULT));
+            var services = CryptographyHelper.ByteArrayToString(lenc.GetBytes((ulong)1));
+            var time = CryptographyHelper.ByteArrayToString(lenc.GetBytes((ulong)NKD.Helpers.DateHelper.Timestamp));
+            //var tttt = new IPAddress(new byte[] { 127, 0, 0, 1 }).IPAsInt();
+            Func<IPAddress, int, string> fnGetAddress = (ip, port) =>
+            {
+                return string.Format("{0}00000000000000000000FFFF{1}{2}",
+                    services,
+                    CryptographyHelper.ByteArrayToString(ip.GetAddressBytes()),
+                    CryptographyHelper.ByteArrayToString(benc.GetBytes((short)port)));
+            };
+            var ip_origin = fnGetAddress(originIP, originPort.Value);
+            var ip_destination = fnGetAddress(destinationIP, destinationPort.Value);
+            var rand = new Random();
+            var r = new byte[8];
+            rand.NextBytes(r);
+            var nonce = CryptographyHelper.ByteArrayToString(r);
+            var subversion = "00";
+            var startHeight = CryptographyHelper.ByteArrayToString(lenc.GetBytes((uint)0));
+            return string.Format("{0}{1}{2}{3}{4}{5}{6}{7}",
+                version,
+                services,
+                time,
+                ip_origin,
+                ip_destination,
+                nonce,
+                subversion,
+                startHeight
+            );
+        }
+
+        private static string CreateBlockMessage()
+        {
+            var lenc = new LittleEndianBitConverter();
+            var benc = new BigEndianBitConverter();
+            var version = CryptographyHelper.ByteArrayToString(lenc.GetBytes(ConstantsHelper.PROTOCOL_VERSION_DEFAULT));
+            var genesis = "000000000062b72c5e2ceb45fbc8587e807c155b0da735e6483dfba2f0a9c770";
+            var recent =  "98d8cf2b2d787bcc5943faef612b423afc28398fa7a59900b46b1a820e940e8f";
+            var hash_count = "02";
+            var hash_stop = string.Empty.PadLeft(64, '0'); //Hash Stop
+            return string.Format("{0}{1}{2}{3}{4}",
+                version,
+                hash_count,
+                CryptographyHelper.ByteArrayToString(CryptographyHelper.GetHexBytes(recent).Reverse().ToArray()),
+                CryptographyHelper.ByteArrayToString(CryptographyHelper.GetHexBytes(genesis).Reverse().ToArray()),
+                hash_stop
+                );
+        }
+
+
+        private static string CreateObjectMessage(string id, InventoryType? inv = InventoryType.Transaction, bool reverse = true)
+        {
+            var lenc = new LittleEndianBitConverter();
+            var version = CryptographyHelper.ByteArrayToString(lenc.GetBytes(ConstantsHelper.PROTOCOL_VERSION_DEFAULT));
+            if (reverse)
+                id = CryptographyHelper.ByteArrayToString(CryptographyHelper.GetHexBytes(id).Reverse().ToArray());
+            if (inv == null)
+                inv = InventoryType.Transaction;
+            var x = string.Format("{0}{1}{2}",
+               "01",
+                CryptographyHelper.ByteArrayToString(lenc.GetBytes((int)inv)),
+                 id
+               );
+            return x;
+        }
+
+        private static dynamic ProcessBroadcastResponse(string hex)
+        {
+            if (hex == null || hex == string.Empty || hex.Length < 48)
+                return null;
+            var bytes = CryptographyHelper.GetHexBytes(hex);
+            return ProcessBroadcastResponse(bytes);
+        }
+
+        private static dynamic ProcessBroadcastResponse(byte[] bytes) {
+            
+            dynamic result = new ExpandoObject();
+            var lenc = new LittleEndianBitConverter();
+            var benc = new BigEndianBitConverter();
+            result.Magic = lenc.ToUInt32(bytes, 0);
+            result.Command = Encoding.ASCII.GetString(bytes, 4, 12).Replace("\0","");
+            result.Length = lenc.ToUInt32(bytes, 16);
+            result.Checksum = lenc.ToUInt32(bytes, 20);
+            if (bytes.Length < 25)
+                return result;
+            var payload = new byte[bytes.Length - 24];
+            System.Buffer.BlockCopy(bytes, 24, payload, 0, bytes.Length - 24);
+            if (result.Checksum != lenc.ToUInt32(CryptographyHelper.Hash256(CryptographyHelper.Hash256(payload)), 0))
+                throw new SecurityException("Message header checksum is not identical to payload");
+            if (result.Length != payload.Length)
+                throw new SecurityException("Message header length is not identical to payload");
+            switch ((string)result.Command)
+            {
+                case "version":
+                    result.Version = lenc.ToUInt32(payload, 0);
+                    result.Services = lenc.ToUInt64(payload, 4);
+                    result.Timestamp = lenc.ToUInt64(payload, 12);
+                    result.OriginIP = lenc.ToUInt32(payload, 40);
+                    result.OriginPort = benc.ToUInt16(payload, 44);
+                    result.DestinationIP = lenc.ToUInt32(payload, 66);
+                    result.DestinationPort = benc.ToUInt16(payload, 70);
+                    result.Nonce = lenc.ToUInt64(payload, 72);
+                    result.Subversion = payload[80];
+                    result.StartHeight = lenc.ToUInt32(payload, 81);
+                    break;
+                case "addr":
+                    result.Count = VarLength(payload, 0);
+                    int offset = VarOffset(payload, 0);
+                    //RuntimeTypeHandle th = result.Count.GetType().TypeHandle;
+                    //int offset = *(*(int**)&th + 1);
+                    result.Addresses = new List<dynamic>();
+                    for (; offset < payload.Length; offset+=30)
+                    {
+                        var address = new {
+                            Timestamp = lenc.ToUInt32(payload, offset),
+                            Service = lenc.ToUInt64(payload, offset + 4),
+                            IP = new IPAddress((long)lenc.ToUInt32(payload, offset+24)),
+                            Port = benc.ToUInt16(payload, offset + 28)
+                        };
+                        result.Addresses.Add(address);
+                    }
+                    break;    
+                default:
+                    result.Payload = payload;
+                    break;
+            }
+            return result;
+        }
+
+
+        private static string CreateBroadcast(MessageType? msgType, string hex=null)
+        {
+            if (hex == null)
+                hex = string.Empty;
+            var checksum = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(hex))), 0, 4);
+            var magic = ConstantsHelper.MAGIC_STRING;
+            string command = null;
+            switch (msgType)
+            {
+                case MessageType.NotifyTransaction:
+                    command = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes("tx"));
+                    break;
+                case MessageType.NotifyVersion:
+                    command = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes("version"));
+                    break;
+                case MessageType.GetBlocks:
+                    command = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes("getblocks"));
+                    break;
+                case MessageType.GetAddresses:
+                    command = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes("getaddr"));
+                    break;
+                case MessageType.GetObject:
+                    command = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes("getdata"));
+                    break;
+                case MessageType.NotifyObject:
+                    command = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes("inv"));
+                    break;
+                case MessageType.NotifyAddresses:
+                    command = CryptographyHelper.ByteArrayToString(Encoding.ASCII.GetBytes("addr"));
+                    break;
+                default:
+                    return null;
+            }
+            var length = CryptographyHelper.ByteArrayToString(BitConverter.GetBytes(hex.Length / 2));
+            if (command.Length > 24 || length.Length > 8)
+                return null;
+            return string.Format("{0}{1}{2}{3}{4}", magic, command.PadRight(24, '0'), length.PadRight(8, '0'), checksum, hex);
+        }
+
+        private static byte[] DownloadSocket(Socket socket)
+        {
+            int bufferLength = 4096;
+            byte[] buffer = new byte[bufferLength];
+            using (MemoryStream ms = new MemoryStream())
+            {
+                int read;
+                while ((read = socket.Receive(buffer)) == bufferLength)
+                {
+                    ms.Write(buffer, 0, read);
+                }
+                if (read > 0 && read < bufferLength)
+                    ms.Write(buffer, 0, read);
+                return ms.ToArray();
+            }
+
+        }
+
+
+        private static string ExecuteBroadcast(MessageType? messageType, string hex=null, IPAddress destinationIP = null, int? destinationPort = default(int?), IPAddress originIP = null, int? originPort = default(int?))
+        {
+            using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
+            {
+                try
+                {
+                    if (destinationIP == null)
+                        destinationIP = ConstantsHelper.PROTOCOL_VERSION_IP_DEFAULT;
+                    if (destinationPort == default(int?))
+                        destinationPort = ConstantsHelper.PROTOCOL_PORT_DEFAULT;                    
+                    socket.ReceiveTimeout = ConstantsHelper.PROTOCOL_TIMEOUT_DEFAULT;                    
+                    var connectResult = socket.BeginConnect(destinationIP, destinationPort.Value, null, null);
+                    var connectSuccess = connectResult.AsyncWaitHandle.WaitOne(ConstantsHelper.PROTOCOL_TIMEOUT_DEFAULT, true);
+                    if (!connectSuccess)
+                        return null;
+                    if (!socket.Connected)
+                        return null;
+                    socket.Send(CryptographyHelper.GetHexBytes(CreateBroadcast(MessageType.NotifyVersion, CreateVersionMessage(destinationIP, destinationPort, originIP, originPort))));
+                    byte[] bytes = DownloadSocket(socket);
+                    //socket.Receive(bytes); //only 1 ack in nmc
+                    if (Encoding.ASCII.GetString(bytes).IndexOf("verack") < 0)
+                        return null;
+                    Action<string> checkHexExists = (hx) =>
+                        {
+                            if (hex == null || hex.Length == 0)
+                                throw new Exception(string.Format("Missing parameter for {0}", messageType));
+                        };
+                    switch (messageType)
+                    {
+                        case MessageType.NotifyVersion:
+                            return CryptographyHelper.ByteArrayToString(bytes);
+                        case MessageType.NotifyTransaction:
+                            checkHexExists(hex);
+                            socket.Send(CryptographyHelper.GetHexBytes(CreateBroadcast(MessageType.NotifyTransaction, hex)));
+                            //return CryptographyHelper.ByteArrayToString(DownloadSocket(socket)); //socket.Receive(bytes); //nothing received
+                            return GetID(hex); //TODO CHECK
+                        case MessageType.GetBlocks:
+                            if (hex == null || hex.Length == 0)
+                                hex = CreateBlockMessage();
+                            socket.Send(CryptographyHelper.GetHexBytes(CreateBroadcast(MessageType.GetBlocks, hex)));
+                            return CryptographyHelper.ByteArrayToString(DownloadSocket(socket));
+                        case MessageType.GetAddresses:
+                            socket.Send(CryptographyHelper.GetHexBytes(CreateBroadcast(MessageType.GetAddresses)));
+                            return CryptographyHelper.ByteArrayToString(DownloadSocket(socket));
+                        case MessageType.GetObject:
+                            checkHexExists(hex);
+                            socket.Send(CryptographyHelper.GetHexBytes(CreateBroadcast(MessageType.GetObject, hex)));
+                            return CryptographyHelper.ByteArrayToString(DownloadSocket(socket));
+                        case MessageType.NotifyObject:
+                            checkHexExists(hex);
+                            socket.Send(CryptographyHelper.GetHexBytes(CreateBroadcast(MessageType.NotifyObject, hex)));
+                            return CryptographyHelper.ByteArrayToString(DownloadSocket(socket));
+                        default:
+                            throw new NotImplementedException();
+                    }
+                }
+                catch (SocketException ex)
+                {
+                    Console.WriteLine("Problem executing {0}. {1}. Error code: {2}.", messageType, ex.Message, ex.ErrorCode);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    return null;
+                }
+                finally
+                {
+                    if (socket.Connected)
+                        socket.Shutdown(SocketShutdown.Both);
+                    socket.Close();
+                }
+            }
+        }
+
+        private static string VarInt(ulong val)
+        {
+            var lenc = new LittleEndianBitConverter();
+            if (val < 0xfd)
+                return CryptographyHelper.ByteArrayToString(new byte[] {(byte)val});
+            else if (val < 0xffff)
+                return "FD" + CryptographyHelper.ByteArrayToString(lenc.GetBytes((ushort)val));
+            else if (val < 0xffffffff)
+                return "FE" + CryptographyHelper.ByteArrayToString(lenc.GetBytes((uint)val));
+            else
+                return "FF" + CryptographyHelper.ByteArrayToString(lenc.GetBytes((ulong)val));
+        }
+
+        private static int VarOffset(byte[] stream, int index)
+        {
+            if (stream[index] == 0xff)
+                return 9;
+            else if (stream[index] == 0xfe)
+                return 5;
+            else if (stream[index] == 0xfd)
+                return 3;
+            else
+                return 1;
+        }
+
+        private static dynamic VarLength(byte[] stream, int index)
+        {
+            var lenc = new LittleEndianBitConverter();
+            if (stream[index] == 0xff)
+                return lenc.ToUInt64(stream, index + 1);
+            else if (stream[index] == 0xfe)
+                return lenc.ToUInt32(stream, index + 1);
+            else if (stream[index] == 0xfd)
+                return lenc.ToUInt16(stream, index + 1);
+            else
+                return stream[index];
+        }
+
+        private static string VarStr(string str)
+        {
+            return VarInt((ulong)str.Length) + str;
+        }
+
         private static dynamic ExecuteCall(string methodName, object p)
         {
-            HttpWebRequest webRequest = (HttpWebRequest)WebRequest.Create("http://localhost:8336");
-            webRequest.Credentials = new NetworkCredential("user", "pwd");
+            HttpWebRequest webRequest = (HttpWebRequest)WebRequest.Create(string.Format("http://{0}:{1}", ConstantsHelper.RPC_HOST_DEFAULT, ConstantsHelper.RPC_PORT_DEFAULT));
+            webRequest.Credentials = new NetworkCredential(ConstantsHelper.RPC_USER_DEFAULT, ConstantsHelper.RPC_PASSWORD_DEFAULT);
             /// important, otherwise the service can't desirialse your request properly
             webRequest.ContentType = "application/json-rpc";
             webRequest.Method = "POST";
@@ -734,7 +1117,7 @@ namespace CNX.Shared.Helpers
             //{
             //    FromAddress = ConstantsHelper.TRUSTED_ADDRESSES[1],
             //    ToAddress = ConstantsHelper.TRUSTED_ADDRESSES[0],
-            //    Amount = 0.01
+            //    Amount = ConstantsHelper.PROTOCOL_FEE_NETWORK_DEFAULT*2
             //});
 
             //var tempt = ExecuteMethod(NexusCall.Split, new
@@ -755,22 +1138,29 @@ namespace CNX.Shared.Helpers
             //string tx = "01000000013a9921017672f56611d1975e4cb47920f88447dc3e4d5afe8de58e47f01029e2000000008c493046022100af5a42928a3c497b652cf4c663b06adea257dcfaa62e5396a68a1f2e97fb74ee0221008a9ac1e0e2c57934aa90cd82fdd454d86d762d50a539673ccb296658dff6c37c01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431ffffffff0300879303000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00879303000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac7f8d5b00000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00000000";
             //var txid = GetTxID(tx);
 
-            var txTest = "010000000410739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77000000008A47304402202520a2eda128223e185a88abd6c041cd0ee2421b50343a1968e3adc69a074a6a022078ca945c64c749a5bf470c6ad4d19fb3d0a7262323df2364de63830dd2c1c33201410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77010000008A47304402202672e1762928a3114d888037ac0bf01ceebe3c6978bfcf6e79813f2051eb5b3b02203bd13236c43382795939dd9217e173dd7ba38b89e74d49e1232dd3c310c33e2701410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77020000008B483045022100e1ba45b48736351644f0c22ad22ffed4e68fe7fb67dd5eeae5ef1b8ba33ba4580220099a08de5414131e8eef289207c2ed010bee1614f55f96d6e91c3dd793d21b1e01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77030000008A473044022100bd999ac6fc9df349b39af9b16b09d6624b0e31fbb9d68bb5cf2a25544c5449a3021f4a15b59844d28269d10c46168e1ecaf500903db532725c710e08d48ae0a2fc01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF01C0CB1707000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00000000";
+            //beaa0b41640b36cac4328861ac5b88da06e64adb6e1299ebadef76b58dc42f46
+            //var txTest = "010000000410739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77000000008A47304402202520a2eda128223e185a88abd6c041cd0ee2421b50343a1968e3adc69a074a6a022078ca945c64c749a5bf470c6ad4d19fb3d0a7262323df2364de63830dd2c1c33201410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77010000008A47304402202672e1762928a3114d888037ac0bf01ceebe3c6978bfcf6e79813f2051eb5b3b02203bd13236c43382795939dd9217e173dd7ba38b89e74d49e1232dd3c310c33e2701410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77020000008B483045022100e1ba45b48736351644f0c22ad22ffed4e68fe7fb67dd5eeae5ef1b8ba33ba4580220099a08de5414131e8eef289207c2ed010bee1614f55f96d6e91c3dd793d21b1e01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF10739B179AECC6197535A8EBE490480AD1DFA1FC942FBD033FE12DC421279E77030000008A473044022100bd999ac6fc9df349b39af9b16b09d6624b0e31fbb9d68bb5cf2a25544c5449a3021f4a15b59844d28269d10c46168e1ecaf500903db532725c710e08d48ae0a2fc01410438a311e9ab10e0075304318710f855337b1e5a411fa2bd9d1d5147f3723dd2396b2ad9957ffd0bb899f5f5285a5c485410693e8f1f02763d862a5c5a96c81431FFFFFFFF01C0CB1707000000001976a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac00000000";
                 
             //var oldPubKey = "51141bd6e9164a68802809e53ad10e66a043995de2396d76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac";
             //var hh = "76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac".Length;
             //var xx = string.Join("", oldPubKey.Reverse().Take(50).Reverse().ToArray());
             //var testClean = (oldPubKey.IndexOf("76a914") != 0) oldPubKey.Substring(oldPubKey.IndexOf("76a914")); //51141bd6e9164a68802809e53ad10e66a043995de2396d76a914c4e6384021b8b54b88cb68104b8b2229503b8f8388ac
 
-            var temp = ConstantsHelper.MAGIC_INT;
-
-            var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IPv4);
-            socket.Connect("localhost", 8336);
- //             checksum = hashlib.sha256(hashlib.sha256(payload).digest()).digest()[0:4]
- //16     return struct.pack('L12sL4s', magic, command, len(payload), checksum) + payload
-//            103     return makeMessage(magic, 'tx', payload)
+            //var c2 = "0100000001484d40d45b9ea0d652fca8258ab7caa42541eb52975857f96fb50cd732c8b481000000008a47304402202cb265bf10707bf49346c3515dd3d16fc454618c58ec0a0ff448a676c54ff71302206c6624d762a1fcef4618284ead8f08678ac05b13c84235f1654e6ad168233e8201410414e301b2328f17442c0b8310d787bf3d8a404cfbd0704f135b6ad4b2d3ee751310f981926e53a6e8c39bd7d3fefd576c543cce493cbac06388f2651d1aacbfcdffffffff0162640100000000001976a914c8e90996c7c6080ee06284600c684ed904d14c5c88ac00000000";
+            //var c3 = CryptographyHelper.ByteArrayToString(CryptographyHelper.Hash256(CryptographyHelper.Hash256(CryptographyHelper.GetHexBytes(c2))), 0, 4);
 
 
+
+            //var inputs = CryptographyHelper.ByteArrayToString(new byte[] { Convert.ToByte(inputCount) });
+            //var tx = "94eb66cf0bc2f833841ad7a2337d280a6c3966dd2c936dfd30645a4feed422e5";
+            //ProcessBroadcastResponse(CreateBroadcast(MessageType.Version, CreateVersionMessage()));
+            //var ret = ExecuteBroadcast(MessageType.GetBlocks);
+            
+            //var ret3 = ExecuteBroadcast(MessageType.RetrieveObject, CreateObjectMessage(tx, InventoryType.Transaction, true));
+            //var ret4 = ExecuteBroadcast(MessageType.NotifyObject, CreateObjectMessage(tx, InventoryType.Transaction, false));
+
+            GetPeers();
+            
 
         }
     }
