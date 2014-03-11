@@ -30,7 +30,8 @@ namespace CNX.Shared.Helpers
         public static string RPC_USER_DEFAULT = "user";
         public static string RPC_PASSWORD_DEFAULT = "pwd";
         public static double PROTOCOL_FEE_NETWORK_DEFAULT = 0.01;
-        public static double CENT_MULTIPLIER = 100000000;
+        public static double CENT_MULTIPLIER = 100000000.0;
+        public static double CENT = 1.0 / CENT_MULTIPLIER;
         public static uint[] PEERS = new uint[] {
             0x58cea445, 
             0x2b562f4e, 

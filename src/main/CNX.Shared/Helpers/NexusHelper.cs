@@ -839,13 +839,14 @@ namespace CNX.Shared.Helpers
             return ProcessBroadcastResponse(bytes);
         }
 
-        private static dynamic ProcessBroadcastResponse(byte[] bytes) {
-            
+        private static dynamic ProcessBroadcastResponse(byte[] bytes)
+        {
+
             dynamic result = new ExpandoObject();
             var lenc = new LittleEndianBitConverter();
             var benc = new BigEndianBitConverter();
             result.Magic = lenc.ToUInt32(bytes, 0);
-            result.Command = Encoding.ASCII.GetString(bytes, 4, 12).Replace("\0","");
+            result.Command = Encoding.ASCII.GetString(bytes, 4, 12).Replace("\0", "");
             result.Length = lenc.ToUInt32(bytes, 16);
             result.Checksum = lenc.ToUInt32(bytes, 20);
             if (bytes.Length < 25)
@@ -876,17 +877,32 @@ namespace CNX.Shared.Helpers
                     //RuntimeTypeHandle th = result.Count.GetType().TypeHandle;
                     //int offset = *(*(int**)&th + 1);
                     result.Addresses = new List<dynamic>();
-                    for (; offset < payload.Length; offset+=30)
+                    for (; offset < payload.Length; offset += 30)
                     {
-                        var address = new {
+                        var address = new
+                        {
                             Timestamp = lenc.ToUInt32(payload, offset),
                             Service = lenc.ToUInt64(payload, offset + 4),
-                            IP = new IPAddress((long)lenc.ToUInt32(payload, offset+24)),
+                            IP = new IPAddress((long)lenc.ToUInt32(payload, offset + 24)),
                             Port = benc.ToUInt16(payload, offset + 28)
                         };
                         result.Addresses.Add(address);
                     }
-                    break;    
+                    break;
+                case "inv":
+                    result.Count = VarLength(payload, 0);
+                    offset = VarOffset(payload, 0);
+                    result.Inventory = new List<dynamic>();
+                    for (; offset < payload.Length; offset += 36)
+                    {
+                        var inv = new
+                        {
+                            InventoryType = lenc.ToUInt32(payload, offset),
+                            Hash = CryptographyHelper.ByteArrayToString(payload.Skip(offset + 4).Take(32).Reverse().ToArray())
+                        };
+                        result.Inventory.Add(inv);
+                    }
+                    break;
                 default:
                     result.Payload = payload;
                     break;
@@ -987,7 +1003,7 @@ namespace CNX.Shared.Helpers
                         case MessageType.NotifyTransaction:
                             checkHexExists(hex);
                             socket.Send(CryptographyHelper.GetHexBytes(CreateBroadcast(MessageType.NotifyTransaction, hex)));
-                            //return CryptographyHelper.ByteArrayToString(DownloadSocket(socket)); //socket.Receive(bytes); //nothing received
+                            //return CryptographyHelper.ByteArrayToString(DownloadSocket(socket)); //socket.Receive(bytes); //nothing received may take30 mins may return an inv?
                             return GetTransactionID(hex); //TODO CHECK
                         case MessageType.GetBlocks:
                             if (hex == null || hex.Length == 0)
