@@ -34,23 +34,23 @@
   <ItemGroup>
     <Reference Include="BouncyCastle.Crypto, Version=1.7.5156.13439, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\XODB.Orchard\lib\bouncycastle\BouncyCastle.Crypto.dll</HintPath>
+      <HintPath>..\..\..\..\nkd\src\main\NKD.Orchard\lib\bouncycastle\BouncyCastle.Crypto.dll</HintPath>
     </Reference>
     <Reference Include="CookComputing.XmlRpcV2">
-      <HintPath>..\XODB.Orchard\lib\xml-rpc\CookComputing.XmlRpcV2.dll</HintPath>
+      <HintPath>..\..\..\..\nkd\src\main\NKD.Orchard\lib\xml-rpc\CookComputing.XmlRpcV2.dll</HintPath>
     </Reference>
     <Reference Include="ImpromptuInterface">
-      <HintPath>..\XODB.Orchard\lib\impromptu-interface-bin\ImpromptuInterface.dll</HintPath>
+      <HintPath>..\..\..\..\nkd\src\main\NKD.Orchard\lib\impromptu\ImpromptuInterface.dll</HintPath>
     </Reference>
     <Reference Include="MiscUtil">
-      <HintPath>..\XODB.Orchard\lib\miscutil\MiscUtil.dll</HintPath>
+      <HintPath>..\..\..\..\nkd\src\main\NKD.Orchard\lib\miscutil\MiscUtil.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=4.5.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\XODB.Orchard\lib\newtonsoft.json\Newtonsoft.Json.dll</HintPath>
+      <HintPath>..\..\..\..\nkd\src\main\NKD.Orchard\lib\newtonsoft.json\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="protobuf-net">
-      <HintPath>..\XODB.Orchard\lib\protobuf-net\protobuf-net.dll</HintPath>
+      <HintPath>..\..\..\..\nkd\src\main\NKD.Orchard\lib\protobuf-net\protobuf-net.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Configuration" />
